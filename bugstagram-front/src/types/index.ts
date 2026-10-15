@@ -39,6 +39,7 @@ export interface ScoredPost {
   id: string;
   category: Category;
   title: string;
+  image_url: string;
   content: string;
   author: {
     username: string;
