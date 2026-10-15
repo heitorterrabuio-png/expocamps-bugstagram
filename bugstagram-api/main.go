@@ -31,14 +31,18 @@ func main() {
 	// Middlewares obrigatórios
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	// CORS deve vir antes das rotas
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:3000", "https://expocamps-bugstagram.vercel.app"},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// Suas rotas da API aqui...
 
 	// Rotas da API
 	r.Route("/api", func(r chi.Router) {
