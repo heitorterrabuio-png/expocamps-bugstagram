@@ -51,7 +51,7 @@ type Post struct {
 	ID           string   `json:"id"`
 	Category     Category `json:"category"`
 	Title        string   `json:"title"`
-	ImageURL     string   `json:img_url`
+	ImageURL     string   `json:"image_url"`
 	Content      string   `json:"content"`
 	Author       Author   `json:"author"`
 	Likes        int      `json:"likes"`

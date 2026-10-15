@@ -376,63 +376,88 @@ function PostCard({
         </div>
       </div>
 
-      {/* 2. ÁREA DE MÍDIA / CANVAS VISUAL (PROTAGONISMO VISUAL DO INSTAGRAM) */}
-      <div
-        onDoubleClick={handleDoubleTapLike}
-        className={`group relative flex min-h-[260px] cursor-pointer select-none flex-col justify-between overflow-hidden border-y border-[#262626] bg-gradient-to-br ${style.canvasBg} p-6 sm:min-h-[300px] sm:p-8`}
-      >
-        {post.mediaUrl ? (
-          // Caso a API forneça imagem real no futuro
-          <img
-            src={post.mediaUrl}
-            alt={post.title}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          // Efeito de luz de fundo e marca d'água da categoria
-          <>
-            <div className="pointer-events-none absolute -right-6 -top-6 text-[130px] opacity-[0.07] transition-transform duration-500 group-hover:scale-110">
-              {style.emoji}
-            </div>
-            <div className="flex items-center justify-between">
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-md ${style.badge}`}
-              >
-                <span>{style.emoji}</span>
-                {post.category}
-              </span>
+      {/* 2. ÁREA DE MÍDIA / CANVAS VISUAL */}
+<div
+  onDoubleClick={handleDoubleTapLike}
+  className={`group relative flex min-h-[260px] cursor-pointer select-none flex-col justify-between overflow-hidden border-y border-[#262626] bg-gradient-to-br ${style.canvasBg} p-6 sm:min-h-[300px] sm:p-8`}
+>
+  {/* Verifica se existe image_url ou mediaUrl vindo da API */}
+  {(post.image_url || post.mediaUrl) ? (
+    <div className="absolute inset-0 h-full w-full">
+      <img
+        src={post.image_url || post.mediaUrl}
+        alt={post.title}
+        referrerPolicy="no-referrer" // 👈 Adicione isso
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+      />
+      {/* Gradiente escuro sutil sobre a imagem para garantir legibilidade do título por cima */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/20" />
+      
+      {/* Conteúdo flutuante sobre a imagem */}
+      <div className="relative z-10 flex items-center justify-between">
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-md ${style.badge}`}>
+          <span>{style.emoji}</span>
+          {post.category}
+        </span>
+      </div>
 
-              <span className="text-[11px] font-medium text-white/40 opacity-0 transition group-hover:opacity-100">
-                Duplo clique para curtir ♥
-              </span>
-            </div>
+      <div className="relative z-10 my-auto py-4">
+        <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-md sm:text-2xl">
+          {post.title}
+        </h3>
+      </div>
 
-            <div className="my-auto py-4">
-              <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-2xl">
-                {post.title}
-              </h3>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-zinc-400">
-              <span className="font-mono text-[11px] text-zinc-400/90">
-                @{post.author.username}
-              </span>
-              {viewMode === "lab" && (
-                <span className="rounded-md border border-white/10 bg-black/50 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
-                  Score: {metadata.final_score.toFixed(1)}
-                </span>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Animação de Coração no Duplo Clique */}
-        {showHeartBurst && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
-            <Heart className="h-24 w-24 animate-ping fill-[#ED4956] text-[#ED4956] drop-shadow-lg" />
-          </div>
+      <div className="relative z-10 flex items-center justify-between text-xs text-zinc-300">
+        <span className="font-mono text-[11px] text-zinc-300/90">
+          @{post.author.username}
+        </span>
+        {viewMode === "lab" && (
+          <span className="rounded-md border border-white/10 bg-black/60 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
+            Score: {metadata.final_score.toFixed(1)}
+          </span>
         )}
       </div>
+    </div>
+  ) : (
+    // Fallback original caso o post não possua imagem cadastrada na API
+    <>
+      <div className="pointer-events-none absolute -right-6 -top-6 text-[130px] opacity-[0.07] transition-transform duration-500 group-hover:scale-110">
+        {style.emoji}
+      </div>
+      <div className="flex items-center justify-between">
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-md ${style.badge}`}>
+          <span>{style.emoji}</span>
+          {post.category}
+        </span>
+        <span className="text-[11px] font-medium text-white/40 opacity-0 transition group-hover:opacity-100">
+          Duplo clique para curtir ♥
+        </span>
+      </div>
+      <div className="my-auto py-4">
+        <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-2xl">
+          {post.title}
+        </h3>
+      </div>
+      <div className="flex items-center justify-between text-xs text-zinc-400">
+        <span className="font-mono text-[11px] text-zinc-400/90">
+          @{post.author.username}
+        </span>
+        {viewMode === "lab" && (
+          <span className="rounded-md border border-white/10 bg-black/50 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
+            Score: {metadata.final_score.toFixed(1)}
+          </span>
+        )}
+      </div>
+    </>
+  )}
+
+  {/* Animação de Coração no Duplo Clique */}
+  {showHeartBurst && (
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/20">
+      <Heart className="h-24 w-24 animate-ping fill-[#ED4956] text-[#ED4956] drop-shadow-lg" />
+    </div>
+  )}
+</div>
 
       {/* 3. BARRA DE AÇÕES COMPACTA (ESTILO INSTAGRAM + SIMULADOR) */}
       <div className="px-4 pt-3 pb-4">
