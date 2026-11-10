@@ -21,18 +21,39 @@ export const ALL_CATEGORIES: Category[] = [
   "Games",
 ];
 
-export type ActionType = "LIKE" | "SAVE" | "SKIP";
+export type ActionType =
+  | "LIKE"
+  | "SAVE"
+  | "SHARE"
+  | "SKIP"
+  | "DWELL"
+  | "FAST_SKIP"
+  | "like"
+  | "save"
+  | "share"
+  | "skip"
+  | "dwell"
+  | "fast_skip";
 
 export interface ExplanationMetadata {
   final_score: number;
   breakdown: {
     affinity_points: number;
+    creator_points?: number;
+    freshness_points?: number;
     popularity_points: number;
     recency_points: number;
   };
   is_exploration_slot: boolean;
   penalty_applied: number;
   match_reason: string;
+  has_dwell?: boolean;
+  has_share?: boolean;
+  age_hours?: number;
+  trending_score?: number;
+  is_trending?: boolean;
+  cold_start_factor?: number;
+  personal_weight?: number;
 }
 
 export interface ScoredPost {
@@ -47,7 +68,29 @@ export interface ScoredPost {
   };
   likes: number;
   recency_score: number;
+  age_hours?: number;
   metadata: ExplanationMetadata;
+}
+
+export interface GlobalTrendingPost {
+  post_id: string;
+  category: Category;
+  title: string;
+  total_views: number;
+  total_likes: number;
+  total_saves: number;
+  total_shares: number;
+  total_dwell_seconds: number;
+  last_interacted_at: string;
+  raw_momentum: number;
+  trending_score: number;
+  is_trending: boolean;
+}
+
+export interface GlobalMetricsResponse {
+  top_trending: GlobalTrendingPost[];
+  total_system_interactions: number;
+  catalog_count: number;
 }
 
 export type UserProfile = Record<Category, number>;

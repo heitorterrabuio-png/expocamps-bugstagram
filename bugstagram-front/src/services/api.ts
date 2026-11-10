@@ -3,6 +3,7 @@
 import {
   ActionType,
   Category,
+  GlobalMetricsResponse,
   ScoredPost,
   SimulationStateResponse,
   UserProfile,
@@ -19,6 +20,30 @@ export class ApiOfflineError extends Error {
 }
 
 /**
+ * Obtém ou inicializa um ID de sessão único persistido no navegador.
+ * Garante que múltiplos usuários (ou abas) tenham simulações isoladas
+ * no backend Go sem conflitos concorrentes.
+ */
+function getSessionId(): string {
+  if (typeof window === "undefined") return "ssr-session";
+  const KEY = "bugstagram_session_id";
+  try {
+    let sid = localStorage.getItem(KEY);
+    if (!sid) {
+      sid =
+        "sess_" +
+        Math.random().toString(36).substring(2, 9) +
+        "_" +
+        Date.now().toString(36);
+      localStorage.setItem(KEY, sid);
+    }
+    return sid;
+  } catch {
+    return "default";
+  }
+}
+
+/**
  * Executa a requisição tentando o prefixo /api (padrão REST) e faz fallback
  * automático para a raiz caso o roteador Go não utilize o prefixo /api.
  */
@@ -28,6 +53,7 @@ async function requestWithFallback<T>(
 ): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    "X-Session-ID": getSessionId(),
     ...(options?.headers || {}),
   };
 
@@ -108,8 +134,29 @@ export async function interact(
   });
 }
 
+export async function sendTelemetryDwell(
+  postId: string,
+  category: Category,
+  action: "dwell" | "fast_skip"
+): Promise<SimulationStateResponse> {
+  return requestWithFallback<SimulationStateResponse>("/telemetry/dwell", {
+    method: "POST",
+    body: JSON.stringify({
+      post_id: postId,
+      category,
+      action,
+    }),
+  });
+}
+
 export async function resetSimulation(): Promise<SimulationStateResponse> {
   return requestWithFallback<SimulationStateResponse>("/reset", {
     method: "POST",
+  });
+}
+
+export async function getGlobalMetrics(): Promise<GlobalMetricsResponse> {
+  return requestWithFallback<GlobalMetricsResponse>("/metrics/global", {
+    method: "GET",
   });
 }

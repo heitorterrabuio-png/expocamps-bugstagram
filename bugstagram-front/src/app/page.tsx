@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Heart,
   FastForward,
@@ -9,8 +9,8 @@ import {
   Flame,
   Sparkles,
   AlertCircle,
-  Bookmark,
   Repeat,
+  Send,
   Sliders,
   Eye,
   Compass,
@@ -28,11 +28,13 @@ import {
   ActionType,
   ALL_CATEGORIES,
   Category,
+  GlobalTrendingPost,
   ScoredPost,
   UserProfile,
 } from "@/types";
 import {
   getFeed,
+  getGlobalMetrics,
   getProfile,
   interact,
   resetSimulation,
@@ -129,8 +131,14 @@ const DEFAULT_PROFILE: UserProfile = {
   Games: 50,
 };
 
-// Converte recency_score (0-100) em tempo relativo natural estilo Instagram
-function formatRelativeTime(recencyScore: number): string {
+// Converte recency_score (0-100) ou age_hours em tempo relativo natural estilo Instagram
+function formatRelativeTime(recencyScore: number, ageHours?: number): string {
+  if (typeof ageHours === "number" && ageHours >= 0) {
+    if (ageHours < 0.2) return "há poucos instantes";
+    if (ageHours < 1.0) return `há ${Math.max(1, Math.round(ageHours * 60))} min`;
+    if (ageHours < 24.0) return `há ${Math.max(1, Math.round(ageHours))} h`;
+    return `há ${Math.max(1, Math.round(ageHours / 24))} d`;
+  }
   const clamped = Math.max(0, Math.min(100, recencyScore));
   if (clamped >= 95) return "há poucos minutos";
   if (clamped >= 80) return `há ${Math.max(5, Math.round((100 - clamped) * 2))} min`;
@@ -147,7 +155,9 @@ interface SessionTelemetry {
   totalInteractions: number;
   likes: number;
   saves: number;
+  shares: number;
   skips: number;
+  dwells: number;
   interactedCategories: Partial<Record<Category, number>>;
 }
 
@@ -255,6 +265,7 @@ function PostCard({
   isCurrentProcessing,
   userAffinity,
   onInteract,
+  onPassiveInteract,
 }: {
   post: ExtendedPost;
   rankIndex: number;
@@ -263,27 +274,98 @@ function PostCard({
   isCurrentProcessing: boolean;
   userAffinity: number;
   onInteract: (postId: string, category: Category, action: ActionType) => void;
+  onPassiveInteract: (postId: string, category: Category, action: "dwell" | "fast_skip") => void;
 }) {
-  const [isXRayOpen, setIsXRayOpen] = useState<boolean>(viewMode === "lab");
+  const [userXRayOverride, setUserXRayOverride] = useState<boolean | null>(null);
+  const [prevViewMode, setPrevViewMode] = useState<"social" | "lab">(viewMode);
   const [showHeartBurst, setShowHeartBurst] = useState<boolean>(false);
 
-  // Sincroniza abertura automática quando o usuário alterna entre Modo Social e Modo Lab
+  const cardRef = useRef<HTMLElement | null>(null);
+  const dwellTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const visibleStartTimeRef = useRef<number | null>(null);
+  const hasDispatchedDwellRef = useRef<boolean>(false);
+  const hasDispatchedFastSkipRef = useRef<boolean>(false);
+
+  // Rastreamento passivo de Dwell Time (> 60% visível):
+  // >= 3s envia dwell (+2 tema, +1 criador)
+  // < 1s envia fast_skip (-1.5 tema, -1 criador)
   useEffect(() => {
-    setIsXRayOpen(viewMode === "lab");
-  }, [viewMode]);
+    const element = cardRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            visibleStartTimeRef.current = Date.now();
+            if (!hasDispatchedDwellRef.current) {
+              dwellTimerRef.current = setTimeout(() => {
+                hasDispatchedDwellRef.current = true;
+                onPassiveInteract(post.id, post.category, "dwell");
+              }, 3000);
+            }
+          } else {
+            if (dwellTimerRef.current) {
+              clearTimeout(dwellTimerRef.current);
+              dwellTimerRef.current = null;
+            }
+            if (visibleStartTimeRef.current !== null) {
+              const elapsed = Date.now() - visibleStartTimeRef.current;
+              visibleStartTimeRef.current = null;
+              if (
+                elapsed > 100 &&
+                elapsed < 1000 &&
+                !hasDispatchedDwellRef.current &&
+                !hasDispatchedFastSkipRef.current
+              ) {
+                hasDispatchedFastSkipRef.current = true;
+                onPassiveInteract(post.id, post.category, "fast_skip");
+              }
+            }
+          }
+        }
+      },
+      { threshold: [0.6] }
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      if (dwellTimerRef.current) {
+        clearTimeout(dwellTimerRef.current);
+      }
+    };
+  }, [post.id, post.category, onPassiveInteract]);
+
+  if (prevViewMode !== viewMode) {
+    setPrevViewMode(viewMode);
+    setUserXRayOverride(null);
+  }
+
+  const isXRayOpen =
+    userXRayOverride !== null ? userXRayOverride : viewMode === "lab";
 
   const style = CATEGORY_STYLES[post.category] || CATEGORY_STYLES.Tecnologia;
   const { metadata } = post;
 
-  // Cálculo proporcional da participação dos pontos no score bruto
+  // Cálculo proporcional da participação dos 4 sinais do Value Model
   const aff = Math.max(0, metadata.breakdown.affinity_points);
+  const creator = Math.max(
+    0,
+    metadata.breakdown.creator_points ?? userAffinity * 0.2
+  );
+  const fresh = Math.max(
+    0,
+    metadata.breakdown.freshness_points ?? metadata.breakdown.recency_points
+  );
   const pop = Math.max(0, metadata.breakdown.popularity_points);
-  const rec = Math.max(0, metadata.breakdown.recency_points);
-  const totalRaw = aff + pop + rec || 1;
+  const totalRaw = aff + creator + fresh + pop || 1;
 
   const affPercent = (aff / totalRaw) * 100;
+  const creatorPercent = (creator / totalRaw) * 100;
+  const freshPercent = (fresh / totalRaw) * 100;
   const popPercent = (pop / totalRaw) * 100;
-  const recPercent = (rec / totalRaw) * 100;
   const hasPenalty = metadata.penalty_applied !== 0;
   const isHighAffinityAuthor = userAffinity >= 70;
 
@@ -296,6 +378,7 @@ function PostCard({
 
   return (
     <article
+      ref={cardRef}
       className={`overflow-hidden rounded-2xl border transition-all duration-300 ${
         metadata.is_exploration_slot && viewMode === "lab"
           ? "border-amber-400/80 bg-[#121212] shadow-[0_0_25px_rgba(251,191,36,0.12)]"
@@ -330,7 +413,7 @@ function PostCard({
                 ✓
               </span>
               <span className="text-xs text-[#A8A8A8]">
-                • {formatRelativeTime(post.recency_score)}
+                • {formatRelativeTime(post.recency_score, post.age_hours ?? metadata.age_hours)}
               </span>
               {viewMode === "lab" && (
                 <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-zinc-300">
@@ -349,8 +432,18 @@ function PostCard({
           </div>
         </div>
 
-        {/* Indicadores discretos de Exploração / Categoria */}
+        {/* Indicadores discretos de Exploração / Categoria / Tendência Global */}
         <div className="flex items-center gap-2">
+          {metadata.is_trending && (
+            <span
+              title={`Em Alta na Rede: Top 15% de momentum global (${metadata.trending_score !== undefined ? metadata.trending_score.toFixed(1) : ""}/100)`}
+              className="inline-flex items-center gap-1 rounded-full border border-orange-500/60 bg-orange-500/15 px-2.5 py-0.5 text-[11px] font-bold text-orange-400"
+            >
+              <Flame className="h-3 w-3 fill-orange-400 text-orange-400" />
+              <span>Em Alta</span>
+            </span>
+          )}
+
           {metadata.is_exploration_slot && (
             <span
               title="Conteúdo injetado pelo algoritmo para testar novos interesses fora da sua bolha atual"
@@ -367,7 +460,7 @@ function PostCard({
 
           <button
             type="button"
-            onClick={() => setIsXRayOpen((prev) => !prev)}
+            onClick={() => setUserXRayOverride(!isXRayOpen)}
             title="Inspecionar motivos da recomendação"
             className="rounded-full p-1.5 text-[#A8A8A8] transition hover:bg-white/10 hover:text-white"
           >
@@ -497,6 +590,23 @@ function PostCard({
                 </span>
               )}
             </button>
+
+            {/* Botão Compartilhar / Direct (SHARE) - Sinal #1 de Ranking da Meta */}
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onInteract(post.id, post.category, "SHARE")}
+              title="Compartilhar via Direct (+15 pts tema, +12 criador - Maior peso do motor)"
+              className="group flex items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2 text-sm font-semibold text-white transition hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Send className="h-5 w-5 text-zinc-300 transition group-hover:text-cyan-400" />
+              <span className="text-xs font-bold">Share</span>
+              {viewMode === "lab" && (
+                <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-300">
+                  +15
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Ações Direita: Pular Post e Botão Raio-X */}
@@ -516,7 +626,7 @@ function PostCard({
             {/* Toggle do Raio-X da Recomendação */}
             <button
               type="button"
-              onClick={() => setIsXRayOpen((prev) => !prev)}
+              onClick={() => setUserXRayOverride(!isXRayOpen)}
               className={`flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition ${
                 isXRayOpen
                   ? "border-[#0095F6]/50 bg-[#0095F6]/15 text-[#0095F6]"
@@ -556,7 +666,7 @@ function PostCard({
         {!isXRayOpen && (
           <button
             type="button"
-            onClick={() => setIsXRayOpen(true)}
+            onClick={() => setUserXRayOverride(true)}
             className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#A8A8A8] transition hover:text-[#0095F6]"
           >
             <Info className="h-3.5 w-3.5" />
@@ -598,36 +708,41 @@ function PostCard({
           {/* Barra de Participação Efetiva neste Post vs Pesos do Motor */}
           <div className="mt-3">
             <div className="mb-1 flex items-center justify-between text-[10px] text-[#A8A8A8]">
-              <span>Composição dos pontos obtidos neste post:</span>
-              <span>Pesos fixos do motor: 60% / 25% / 15%</span>
+              <span>Value Model do Instagram (Pesos Fixos):</span>
+              <span>45% Tema / 20% Criador / 20% Freshness / 15% Pop</span>
             </div>
 
             <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-800 p-0.5">
               <div
                 style={{ width: `${affPercent}%` }}
                 className="h-full bg-[#DD2A7B] transition-all duration-500"
-                title={`Afinidade: ${aff.toFixed(1)} pts (${Math.round(affPercent)}% do score positivo)`}
+                title={`Tema: ${aff.toFixed(1)} pts (${Math.round(affPercent)}% do score)`}
+              />
+              <div
+                style={{ width: `${creatorPercent}%` }}
+                className="h-full bg-[#A855F7] transition-all duration-500"
+                title={`Criador: ${creator.toFixed(1)} pts (${Math.round(creatorPercent)}% do score)`}
+              />
+              <div
+                style={{ width: `${freshPercent}%` }}
+                className="h-full bg-emerald-400 transition-all duration-500"
+                title={`Freshness (Half-life 12h): ${fresh.toFixed(1)} pts (${Math.round(freshPercent)}% do score)`}
               />
               <div
                 style={{ width: `${popPercent}%` }}
                 className="h-full bg-[#0095F6] transition-all duration-500"
-                title={`Popularidade: ${pop.toFixed(1)} pts (${Math.round(popPercent)}% do score positivo)`}
-              />
-              <div
-                style={{ width: `${recPercent}%` }}
-                className="h-full bg-emerald-400 transition-all duration-500"
-                title={`Recência: ${rec.toFixed(1)} pts (${Math.round(recPercent)}% do score positivo)`}
+                title={`Popularidade: ${pop.toFixed(1)} pts (${Math.round(popPercent)}% do score)`}
               />
             </div>
 
-            <div className="mt-2.5 grid grid-cols-3 gap-2 text-[11px]">
+            <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4 text-[11px]">
               <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[#DD2A7B]" />
-                  <span className="font-semibold text-zinc-300">Afinidade</span>
+                  <span className="font-semibold text-zinc-300">Tema (45%)</span>
                 </div>
                 <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">Peso 60%</span>
+                  <span className="text-[10px] text-[#A8A8A8]">{post.category}</span>
                   <strong className="font-mono text-xs text-white">
                     +{aff.toFixed(1)} pts
                   </strong>
@@ -636,15 +751,13 @@ function PostCard({
 
               <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
                 <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[#0095F6]" />
-                  <span className="font-semibold text-zinc-300">
-                    Popularidade
-                  </span>
+                  <span className="h-2 w-2 rounded-full bg-[#A855F7]" />
+                  <span className="font-semibold text-zinc-300">Criador (20%)</span>
                 </div>
                 <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">Peso 25%</span>
+                  <span className="text-[10px] text-[#A8A8A8]">@{post.author.username}</span>
                   <strong className="font-mono text-xs text-white">
-                    +{pop.toFixed(1)} pts
+                    +{creator.toFixed(1)} pts
                   </strong>
                 </div>
               </div>
@@ -652,16 +765,115 @@ function PostCard({
               <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span className="font-semibold text-zinc-300">Recência</span>
+                  <span className="font-semibold text-zinc-300">Freshness (20%)</span>
                 </div>
                 <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">Peso 15%</span>
+                  <span className="text-[10px] text-[#A8A8A8]">T½ = 12h</span>
                   <strong className="font-mono text-xs text-white">
-                    +{rec.toFixed(1)} pts
+                    +{fresh.toFixed(1)} pts
+                  </strong>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[#0095F6]" />
+                  <span className="font-semibold text-zinc-300">Popularidade (15%)</span>
+                </div>
+                <div className="mt-1 flex items-baseline justify-between">
+                  <span className="text-[10px] text-[#A8A8A8]">{post.likes} likes</span>
+                  <strong className="font-mono text-xs text-white">
+                    +{pop.toFixed(1)} pts
                   </strong>
                 </div>
               </div>
             </div>
+
+            {/* Sinais Comportamentais Registrados (Dwell / Share / Idade) */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {metadata.has_share && (
+                <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/50 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-300">
+                  ✈️ Compartilhado via Direct (+15)
+                </span>
+              )}
+              {metadata.has_dwell && (
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                  👁️ Dwell Time detectado (&ge; 3s)
+                </span>
+              )}
+              {metadata.age_hours !== undefined && (
+                <span className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300">
+                  ⏱️ Idade: {metadata.age_hours}h decorridas
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Dinâmica: Relevância Coletiva vs. Bolha Pessoal */}
+          <div className="mt-3 rounded-xl border border-zinc-800/90 bg-[#141414] p-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 font-bold text-zinc-200">
+                <Flame className="h-3.5 w-3.5 fill-orange-400 text-orange-400" />
+                Relevância Coletiva vs. Bolha Pessoal
+              </span>
+              <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] font-bold text-zinc-300">
+                {metadata.cold_start_factor && metadata.cold_start_factor >= 0.7
+                  ? "Cold Start (< 3 ações)"
+                  : metadata.cold_start_factor && metadata.cold_start_factor > 0
+                  ? "Transição LERP"
+                  : "Bolha Pessoal"}
+              </span>
+            </div>
+
+            {/* Barra Bicolor LERP */}
+            {(() => {
+              const csPct = Math.round((metadata.cold_start_factor ?? 0) * 100);
+              const pPct = 100 - csPct;
+              return (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                    {csPct > 0 && (
+                      <div
+                        style={{ width: `${csPct}%` }}
+                        className="h-full rounded-l-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
+                        title={`Consenso Coletivo: ${csPct}% de influência na recomendação`}
+                      />
+                    )}
+                    {pPct > 0 && (
+                      <div
+                        style={{ width: `${pPct}%` }}
+                        className={`h-full ${
+                          csPct === 0 ? "rounded-full" : "rounded-r-full"
+                        } bg-gradient-to-r from-[#DD2A7B] via-[#A855F7] to-[#0095F6] transition-all duration-500`}
+                        title={`Bolha Pessoal: ${pPct}% de influência na recomendação`}
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="font-semibold text-orange-400">
+                      Consenso Coletivo: <strong>{csPct}%</strong>
+                      {metadata.trending_score !== undefined && (
+                        <span className="ml-1 text-zinc-400">
+                          (Momentum: {metadata.trending_score.toFixed(1)})
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-semibold text-pink-400">
+                      Bolha Individual: <strong>{pPct}%</strong>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+              {metadata.cold_start_factor && metadata.cold_start_factor >= 0.7
+                ? "❄️ Modo Cold Start: Você possui poucas interações na sessão. O algoritmo impulsiona publicações com maior momentum global na rede."
+                : metadata.cold_start_factor && metadata.cold_start_factor > 0
+                ? "📈 Transição LERP: A influência coletiva está decrescendo conforme suas ações individuais moldam sua bolha exclusiva."
+                : "🎯 Bolha Consolidada: As métricas do seu perfil comandam 100% da ordenação deste conteúdo."}
+            </p>
           </div>
 
           {/* Explicação em linguagem natural (match_reason) */}
@@ -700,11 +912,15 @@ export default function BugstagramPage() {
     type: "info" | "error";
   } | null>(null);
 
+  const [globalTrending, setGlobalTrending] = useState<GlobalTrendingPost[]>([]);
+
   const [telemetry, setTelemetry] = useState<SessionTelemetry>({
     totalInteractions: 0,
     likes: 0,
     saves: 0,
+    shares: 0,
     skips: 0,
+    dwells: 0,
     interactedCategories: {},
   });
 
@@ -729,12 +945,16 @@ export default function BugstagramPage() {
     setIsLoading(true);
     setApiError(null);
     try {
-      const [fetchedProfile, fetchedFeed] = await Promise.all([
+      const [fetchedProfile, fetchedFeed, metricsRes] = await Promise.all([
         getProfile(),
         getFeed(),
+        getGlobalMetrics().catch(() => null),
       ]);
       setProfile(fetchedProfile);
       setFeed(fetchedFeed);
+      if (metricsRes) {
+        setGlobalTrending(metricsRes.top_trending);
+      }
     } catch (err) {
       const message =
         err instanceof Error
@@ -748,8 +968,41 @@ export default function BugstagramPage() {
   }, [showToast]);
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    let ignore = false;
+    async function init() {
+      try {
+        const [fetchedProfile, fetchedFeed, metricsRes] = await Promise.all([
+          getProfile(),
+          getFeed(),
+          getGlobalMetrics().catch(() => null),
+        ]);
+        if (!ignore) {
+          setProfile(fetchedProfile);
+          setFeed(fetchedFeed);
+          if (metricsRes) {
+            setGlobalTrending(metricsRes.top_trending);
+          }
+        }
+      } catch (err) {
+        if (!ignore) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : "Falha ao conectar à API Go em http://localhost:8080";
+          setApiError(message);
+          showToast("API Go Offline", message, "error");
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
+  }, [showToast]);
 
   const handleInteraction = async (
     postId: string,
@@ -760,10 +1013,20 @@ export default function BugstagramPage() {
     setProcessingPostId(postId);
     setApiError(null);
 
-    const deltaLabel: Record<ActionType, string> = {
-      LIKE: "Curtida registrada (+5 pts em " + category + ")",
-      SAVE: "Repostado (+10 pts em " + category + ")",
+    const actUpper = action.toUpperCase();
+    const isLike = actUpper === "LIKE";
+    const isSave = actUpper === "SAVE";
+    const isShare = actUpper === "SHARE";
+    const isSkip = actUpper === "SKIP";
+    const isDwell = actUpper === "DWELL";
+
+    const deltaLabel: Record<string, string> = {
+      LIKE: "Curtida registrada (+5 pts tema, +8 criador)",
+      SAVE: "Repostado (+10 pts tema, +12 criador)",
+      SHARE: "Compartilhado via Direct! (+15 pts tema, +12 criador)",
       SKIP: "Post pulado (Sinal de desinteresse em " + category + ")",
+      DWELL: "Dwell Time registrado (+2 pts tema, +1 criador)",
+      FAST_SKIP: "Rolagem rápida detectada (-1.5 pts tema)",
     };
 
     try {
@@ -774,22 +1037,29 @@ export default function BugstagramPage() {
       // Atualiza telemetria real da sessão
       setTelemetry((prev) => ({
         totalInteractions: prev.totalInteractions + 1,
-        likes: prev.likes + (action === "LIKE" ? 1 : 0),
-        saves: prev.saves + (action === "SAVE" ? 1 : 0),
-        skips: prev.skips + (action === "SKIP" ? 1 : 0),
+        likes: prev.likes + (isLike ? 1 : 0),
+        saves: prev.saves + (isSave ? 1 : 0),
+        shares: prev.shares + (isShare ? 1 : 0),
+        skips: prev.skips + (isSkip ? 1 : 0),
+        dwells: prev.dwells + (isDwell ? 1 : 0),
         interactedCategories: {
           ...prev.interactedCategories,
           [category]:
             (prev.interactedCategories[category] ?? 0) +
-            (action === "SKIP" ? 0 : 1),
+            (isSkip ? 0 : 1),
         },
       }));
 
       showToast(
         `${CATEGORY_STYLES[category].emoji} ${category}`,
-        deltaLabel[action],
+        deltaLabel[actUpper] || "Interação processada",
         "info"
       );
+
+      // Atualiza ranking global de momentum após interação
+      getGlobalMetrics()
+        .then((res) => setGlobalTrending(res.top_trending))
+        .catch(() => {});
     } catch (err) {
       const message =
         err instanceof Error
@@ -801,6 +1071,24 @@ export default function BugstagramPage() {
       setProcessingPostId(null);
     }
   };
+
+  const handlePassiveInteraction = useCallback(
+    async (postId: string, category: Category, action: "dwell" | "fast_skip") => {
+      try {
+        const updated = await interact(postId, category, action);
+        setProfile(updated.profile);
+        if (action === "dwell") {
+          setTelemetry((prev) => ({
+            ...prev,
+            dwells: prev.dwells + 1,
+          }));
+        }
+      } catch (err) {
+        console.debug("Telemetry passiva:", err);
+      }
+    },
+    []
+  );
 
   const handleReset = async () => {
     if (isBusy) return;
@@ -814,7 +1102,9 @@ export default function BugstagramPage() {
         totalInteractions: 0,
         likes: 0,
         saves: 0,
+        shares: 0,
         skips: 0,
+        dwells: 0,
         interactedCategories: {},
       });
       showToast(
@@ -822,6 +1112,10 @@ export default function BugstagramPage() {
         "Todos os pesos voltaram para 50% (estado neutro).",
         "info"
       );
+
+      getGlobalMetrics()
+        .then((res) => setGlobalTrending(res.top_trending))
+        .catch(() => {});
     } catch (err) {
       const message =
         err instanceof Error
@@ -1048,24 +1342,36 @@ export default function BugstagramPage() {
               <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-[#A8A8A8]">
                 Sua Sessão
               </p>
-              <div className="mt-2 grid grid-cols-3 gap-1 text-center">
-                <div className="rounded-lg bg-black/60 p-1.5">
+              <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+                <div className="rounded-lg bg-black/60 p-1">
                   <p className="font-mono text-xs font-bold text-[#ff6b78]">
                     {telemetry.likes}
                   </p>
-                  <p className="text-[9px] text-[#A8A8A8]">Likes</p>
+                  <p className="text-[8px] text-[#A8A8A8]">Likes</p>
                 </div>
-                <div className="rounded-lg bg-black/60 p-1.5">
+                <div className="rounded-lg bg-black/60 p-1">
                   <p className="font-mono text-xs font-bold text-[#58b6ff]">
                     {telemetry.saves}
                   </p>
-                  <p className="text-[9px] text-[#A8A8A8]">Salvos</p>
+                  <p className="text-[8px] text-[#A8A8A8]">Salvos</p>
                 </div>
-                <div className="rounded-lg bg-black/60 p-1.5">
+                <div className="rounded-lg bg-black/60 p-1">
+                  <p className="font-mono text-xs font-bold text-cyan-400">
+                    {telemetry.shares}
+                  </p>
+                  <p className="text-[8px] text-[#A8A8A8]">Shares</p>
+                </div>
+                <div className="rounded-lg bg-black/60 p-1">
+                  <p className="font-mono text-xs font-bold text-amber-400">
+                    {telemetry.dwells}
+                  </p>
+                  <p className="text-[8px] text-[#A8A8A8]">Dwells</p>
+                </div>
+                <div className="rounded-lg bg-black/60 p-1">
                   <p className="font-mono text-xs font-bold text-zinc-400">
                     {telemetry.skips}
                   </p>
-                  <p className="text-[9px] text-[#A8A8A8]">Pulos</p>
+                  <p className="text-[8px] text-[#A8A8A8]">Pulos</p>
                 </div>
               </div>
 
@@ -1205,6 +1511,7 @@ export default function BugstagramPage() {
                   isCurrentProcessing={processingPostId === post.id}
                   userAffinity={profile[post.category] ?? 50}
                   onInteract={handleInteraction}
+                  onPassiveInteract={handlePassiveInteraction}
                 />
               ))}
             </div>
@@ -1276,6 +1583,59 @@ export default function BugstagramPage() {
                 </p>
               )}
             </div>
+
+            {/* CARD: EM ALTA NA REDE (CONSENSO COLETIVO DINÂMICO) */}
+            {globalTrending.length > 0 && (
+              <div className="rounded-2xl border border-orange-500/30 bg-[#121212] p-4 shadow-lg shadow-orange-500/5">
+                <div className="flex items-center justify-between border-b border-[#262626] pb-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                    <Flame className="h-4 w-4 fill-orange-400 text-orange-400" />
+                    <span>Em Alta na Rede (Momentum)</span>
+                  </div>
+                  <span className="rounded bg-orange-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-orange-300">
+                    Top 5 Coletivo
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {globalTrending.slice(0, 5).map((tp, idx) => {
+                    const catStyle =
+                      CATEGORY_STYLES[tp.category] || CATEGORY_STYLES.Tecnologia;
+                    return (
+                      <div
+                        key={tp.post_id}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-black/40 p-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="font-mono text-[11px] font-bold text-zinc-500">
+                            #{idx + 1}
+                          </span>
+                          <span className="truncate font-medium text-zinc-200">
+                            {catStyle.emoji} {tp.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {tp.total_shares > 0 && (
+                            <span
+                              title={`${tp.total_shares} compartilhamentos`}
+                              className="rounded bg-cyan-950/60 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-300"
+                            >
+                              {tp.total_shares} ✈️
+                            </span>
+                          )}
+                          <span
+                            title={`Score de Momentum: ${tp.trending_score.toFixed(1)}`}
+                            className="rounded bg-orange-500/20 px-1.5 py-0.5 font-mono text-[11px] font-black text-orange-400"
+                          >
+                            {Math.round(tp.trending_score)} pts
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* CARD 2: OS 8 TERMÔMETROS COLORIDOS DE AFINIDADE */}
             <div className="rounded-2xl border border-[#262626] bg-[#121212] p-5 shadow-2xl">

@@ -37,9 +37,12 @@ func IsValidCategory(c Category) bool {
 type ActionType string
 
 const (
-	ActionLike ActionType = "LIKE"
-	ActionSave ActionType = "SAVE"
-	ActionSkip ActionType = "SKIP"
+	ActionLike     ActionType = "LIKE"
+	ActionSave     ActionType = "SAVE"
+	ActionShare    ActionType = "SHARE"
+	ActionSkip     ActionType = "SKIP"
+	ActionDwell    ActionType = "DWELL"
+	ActionFastSkip ActionType = "FAST_SKIP"
 )
 
 type Author struct {
@@ -56,12 +59,15 @@ type Post struct {
 	Author       Author   `json:"author"`
 	Likes        int      `json:"likes"`
 	RecencyScore float64  `json:"recency_score"`
+	AgeHours     float64  `json:"age_hours,omitempty"`
 }
 
 type ScoreBreakdown struct {
 	AffinityPoints   float64 `json:"affinity_points"`
+	CreatorPoints    float64 `json:"creator_points"`
+	FreshnessPoints  float64 `json:"freshness_points"`
 	PopularityPoints float64 `json:"popularity_points"`
-	RecencyPoints    float64 `json:"recency_points"`
+	RecencyPoints    float64 `json:"recency_points"` // Mantido espelhando FreshnessPoints para compatibilidade retroativa
 }
 
 type ExplanationMetadata struct {
@@ -70,6 +76,13 @@ type ExplanationMetadata struct {
 	IsExplorationSlot bool           `json:"is_exploration_slot"`
 	PenaltyApplied    float64        `json:"penalty_applied"`
 	MatchReason       string         `json:"match_reason"`
+	HasDwell          bool           `json:"has_dwell,omitempty"`
+	HasShare          bool           `json:"has_share,omitempty"`
+	AgeHours          float64        `json:"age_hours,omitempty"`
+	TrendingScore     float64        `json:"trending_score"`
+	IsTrending        bool           `json:"is_trending"`
+	ColdStartFactor   float64        `json:"cold_start_factor"`
+	PersonalWeight    float64        `json:"personal_weight"`
 }
 
 type ScoredPost struct {
@@ -94,4 +107,17 @@ type StateSyncResponse struct {
 	Profile       UserProfile  `json:"profile"`
 	ConsumedCount int          `json:"consumed_count"`
 	Feed          []ScoredPost `json:"feed"`
+}
+
+type GlobalMetricsResponse struct {
+	TopTrending             []PostGlobalMetrics `json:"top_trending"`
+	TotalSystemInteractions int64               `json:"total_system_interactions"`
+	CatalogCount            int                 `json:"catalog_count"`
+}
+
+type HealthResponse struct {
+	Status         string `json:"status"`
+	Uptime         string `json:"uptime"`
+	CatalogSize    int    `json:"catalog_size"`
+	ActiveSessions int    `json:"active_sessions"`
 }
