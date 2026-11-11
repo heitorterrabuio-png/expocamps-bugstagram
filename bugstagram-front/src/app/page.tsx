@@ -1,7 +1,13 @@
 // src/app/page.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   Heart,
   FastForward,
@@ -9,21 +15,23 @@ import {
   Flame,
   Sparkles,
   AlertCircle,
-  Repeat,
   Send,
   Sliders,
-  Eye,
   Compass,
   Home,
-  ChevronDown,
-  ChevronUp,
-  Info,
   X,
-  Zap,
   TrendingUp,
   CheckCircle2,
   MoreHorizontal,
+  Sun,
+  Moon,
+  Bookmark,
+  MessageCircle,
+  BarChart3,
+  Eye,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useViewMode } from "@/context/ViewModeContext";
 import {
   ActionType,
   ALL_CATEGORIES,
@@ -41,7 +49,7 @@ import {
 } from "@/services/api";
 
 // ============================================================================
-// CONFIGURAÇÃO VISUAL DAS CATEGORIAS (CORES ORIGINAIS PRESERVADAS)
+// CONFIGURAÇÃO VISUAL DAS CATEGORIAS
 // ============================================================================
 const CATEGORY_STYLES: Record<
   Category,
@@ -55,67 +63,74 @@ const CATEGORY_STYLES: Record<
   }
 > = {
   Tecnologia: {
-    badge: "bg-cyan-500/15 text-cyan-300 border-cyan-500/40",
-    bar: "from-cyan-500 to-blue-500",
-    ring: "ring-cyan-400",
+    badge:
+      "bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30",
+    bar: "from-blue-500 to-cyan-400",
+    ring: "ring-blue-500",
     emoji: "💻",
-    canvasBg: "from-cyan-950/60 via-slate-950 to-black",
-    handle: "dev.nexus",
+    canvasBg: "from-blue-950 via-slate-900 to-zinc-950",
+    handle: "tech.daily",
   },
   Cinema: {
-    badge: "bg-purple-500/15 text-purple-300 border-purple-500/40",
+    badge:
+      "bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/30",
     bar: "from-purple-500 to-fuchsia-500",
-    ring: "ring-purple-400",
+    ring: "ring-purple-500",
     emoji: "🎬",
-    canvasBg: "from-purple-950/60 via-zinc-950 to-black",
-    handle: "cine.frame",
+    canvasBg: "from-purple-950 via-zinc-900 to-black",
+    handle: "cine.cult",
   },
   Culinaria: {
-    badge: "bg-amber-500/15 text-amber-300 border-amber-500/40",
-    bar: "from-amber-500 to-orange-500",
-    ring: "ring-amber-400",
-    emoji: "🍳",
-    canvasBg: "from-amber-950/60 via-stone-950 to-black",
-    handle: "chef.rustico",
+    badge:
+      "bg-orange-500/15 text-orange-600 dark:text-orange-300 border-orange-500/30",
+    bar: "from-orange-500 to-amber-400",
+    ring: "ring-orange-500",
+    emoji: "🍜",
+    canvasBg: "from-orange-950 via-stone-900 to-black",
+    handle: "chef.lab",
   },
   Fotografia: {
-    badge: "bg-pink-500/15 text-pink-300 border-pink-500/40",
-    bar: "from-pink-500 to-rose-500",
-    ring: "ring-pink-400",
+    badge:
+      "bg-pink-500/15 text-pink-600 dark:text-pink-300 border-pink-500/30",
+    bar: "from-pink-500 to-rose-400",
+    ring: "ring-pink-500",
     emoji: "📸",
-    canvasBg: "from-pink-950/60 via-neutral-950 to-black",
-    handle: "lente.urbana",
+    canvasBg: "from-pink-950 via-neutral-900 to-black",
+    handle: "lentes.urbanas",
   },
   Animais: {
-    badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
-    bar: "from-emerald-500 to-teal-500",
-    ring: "ring-emerald-400",
+    badge:
+      "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30",
+    bar: "from-emerald-500 to-teal-400",
+    ring: "ring-emerald-500",
     emoji: "🐾",
-    canvasBg: "from-emerald-950/60 via-zinc-950 to-black",
-    handle: "fauna.viva",
+    canvasBg: "from-emerald-950 via-stone-900 to-black",
+    handle: "vida.selvagem",
   },
   Esportes: {
-    badge: "bg-lime-500/15 text-lime-300 border-lime-500/40",
+    badge:
+      "bg-lime-500/15 text-lime-600 dark:text-lime-300 border-lime-500/30",
     bar: "from-lime-500 to-green-500",
-    ring: "ring-lime-400",
+    ring: "ring-lime-500",
     emoji: "⚽",
-    canvasBg: "from-lime-950/60 via-neutral-950 to-black",
-    handle: "arena.tatica",
+    canvasBg: "from-lime-950 via-zinc-900 to-black",
+    handle: "arena.pro",
   },
   Carros: {
-    badge: "bg-red-500/15 text-red-300 border-red-500/40",
-    bar: "from-red-500 to-orange-600",
-    ring: "ring-red-400",
+    badge: "bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30",
+    bar: "from-red-500 to-orange-500",
+    ring: "ring-red-500",
     emoji: "🏎️",
-    canvasBg: "from-red-950/60 via-zinc-950 to-black",
-    handle: "gear.head",
+    canvasBg: "from-red-950 via-zinc-900 to-black",
+    handle: "garage.turbo",
   },
   Games: {
-    badge: "bg-indigo-500/15 text-indigo-300 border-indigo-500/40",
+    badge:
+      "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border-indigo-500/30",
     bar: "from-indigo-500 to-violet-500",
-    ring: "ring-indigo-400",
+    ring: "ring-indigo-500",
     emoji: "🎮",
-    canvasBg: "from-indigo-950/60 via-slate-950 to-black",
+    canvasBg: "from-indigo-950 via-slate-900 to-black",
     handle: "pixel.quest",
   },
 };
@@ -131,22 +146,23 @@ const DEFAULT_PROFILE: UserProfile = {
   Games: 50,
 };
 
-// Converte recency_score (0-100) ou age_hours em tempo relativo natural estilo Instagram
 function formatRelativeTime(recencyScore: number, ageHours?: number): string {
   if (typeof ageHours === "number" && ageHours >= 0) {
-    if (ageHours < 0.2) return "há poucos instantes";
-    if (ageHours < 1.0) return `há ${Math.max(1, Math.round(ageHours * 60))} min`;
+    if (ageHours < 0.2) return "agora";
+    if (ageHours < 1.0)
+      return `há ${Math.max(1, Math.round(ageHours * 60))} min`;
     if (ageHours < 24.0) return `há ${Math.max(1, Math.round(ageHours))} h`;
     return `há ${Math.max(1, Math.round(ageHours / 24))} d`;
   }
   const clamped = Math.max(0, Math.min(100, recencyScore));
-  if (clamped >= 95) return "há poucos minutos";
-  if (clamped >= 80) return `há ${Math.max(5, Math.round((100 - clamped) * 2))} min`;
-  if (clamped >= 50) return `há ${Math.max(1, Math.round((90 - clamped) / 10))} h`;
+  if (clamped >= 95) return "há poucos min";
+  if (clamped >= 80)
+    return `há ${Math.max(5, Math.round((100 - clamped) * 2))} min`;
+  if (clamped >= 50)
+    return `há ${Math.max(1, Math.round((90 - clamped) / 10))} h`;
   return `há ${Math.max(1, Math.round((100 - clamped) / 20))} d`;
 }
 
-// Suporte opcional caso o backend envie mediaUrl no futuro
 type ExtendedPost = ScoredPost & {
   mediaUrl?: string;
 };
@@ -159,6 +175,285 @@ interface SessionTelemetry {
   skips: number;
   dwells: number;
   interactedCategories: Partial<Record<Category, number>>;
+}
+
+interface OptimisticReactionState {
+  liked?: boolean;
+  saved?: boolean;
+  shared?: boolean;
+  extraLikes?: number;
+}
+
+// ============================================================================
+// COMPONENTE DE DECOMPOSIÇÃO DO RAIO-X (USADO NO DRAWER MOBILE E PAINEL DESKTOP)
+// ============================================================================
+function PostXRayDetails({
+  post,
+  userAffinity,
+}: {
+  post: ExtendedPost;
+  userAffinity: number;
+}) {
+  const { metadata } = post;
+  const style = CATEGORY_STYLES[post.category] || CATEGORY_STYLES.Tecnologia;
+
+  const aff = Math.max(0, metadata.breakdown.affinity_points);
+  const creator = Math.max(
+    0,
+    metadata.breakdown.creator_points ?? userAffinity * 0.2
+  );
+  const fresh = Math.max(
+    0,
+    metadata.breakdown.freshness_points ?? metadata.breakdown.recency_points
+  );
+  const pop = Math.max(0, metadata.breakdown.popularity_points);
+  const totalRaw = aff + creator + fresh + pop || 1;
+
+  const affPercent = (aff / totalRaw) * 100;
+  const creatorPercent = (creator / totalRaw) * 100;
+  const freshPercent = (fresh / totalRaw) * 100;
+  const popPercent = (pop / totalRaw) * 100;
+  const hasPenalty = metadata.penalty_applied !== 0;
+
+  const csPct = Math.round((metadata.cold_start_factor ?? 0) * 100);
+  const pPct = 100 - csPct;
+
+  return (
+    <div className="space-y-4">
+      {/* Cabeçalho do Post Inspecionado */}
+      <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${style.badge}`}
+            >
+              {style.emoji} {post.category}
+            </span>
+            {metadata.is_trending && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-orange-500/40 bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-500 dark:text-orange-400">
+                <Flame className="h-3 w-3 fill-current" /> Em Alta
+              </span>
+            )}
+            {metadata.is_exploration_slot && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-300">
+                <Sparkles className="h-3 w-3" /> Furo de Bolha
+              </span>
+            )}
+          </div>
+          <h4 className="mt-1.5 line-clamp-1 text-sm font-bold text-foreground">
+            {post.title}
+          </h4>
+          <p className="text-xs text-muted">
+            por @{post.author.username} •{" "}
+            {formatRelativeTime(
+              post.recency_score,
+              post.age_hours ?? metadata.age_hours
+            )}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Score Final
+          </span>
+          <span className="inline-block rounded-lg bg-emerald-500/15 px-2.5 py-1 font-mono text-base font-black text-emerald-600 dark:text-emerald-400">
+            {metadata.final_score.toFixed(1)}
+          </span>
+        </div>
+      </div>
+
+      {/* Penalidade se houver */}
+      {hasPenalty && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-300">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>
+            Penalidade de repetição consecutiva aplicada:{" "}
+            <strong>
+              {metadata.penalty_applied > 0
+                ? `-${metadata.penalty_applied}`
+                : metadata.penalty_applied}{" "}
+              pts
+            </strong>
+          </span>
+        </div>
+      )}
+
+      {/* Decomposição do Value Model */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted">
+          <span className="font-semibold text-foreground">
+            Decomposição do Value Model
+          </span>
+          <span className="font-mono text-[10px]">
+            45% Tema · 20% Criador · 20% Fresh · 15% Pop
+          </span>
+        </div>
+
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-black/10 p-0.5 dark:bg-white/10">
+          <div
+            style={{ width: `${affPercent}%` }}
+            className="h-full bg-[#DD2A7B] transition-all duration-500"
+            title={`Afinidade Tema: +${aff.toFixed(1)} pts`}
+          />
+          <div
+            style={{ width: `${creatorPercent}%` }}
+            className="h-full bg-[#A855F7] transition-all duration-500"
+            title={`Afinidade Criador: +${creator.toFixed(1)} pts`}
+          />
+          <div
+            style={{ width: `${freshPercent}%` }}
+            className="h-full bg-emerald-500 transition-all duration-500"
+            title={`Freshness (T½=12h): +${fresh.toFixed(1)} pts`}
+          />
+          <div
+            style={{ width: `${popPercent}%` }}
+            className="h-full bg-[#0095F6] transition-all duration-500"
+            title={`Popularidade: +${pop.toFixed(1)} pts`}
+          />
+        </div>
+
+        <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-xl border border-border bg-background p-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[#DD2A7B]" />
+              <span className="font-semibold text-foreground">Tema (45%)</span>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="text-[11px] text-muted">{post.category}</span>
+              <strong className="font-mono text-xs text-foreground">
+                +{aff.toFixed(1)} pts
+              </strong>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-background p-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[#A855F7]" />
+              <span className="font-semibold text-foreground">
+                Criador (20%)
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="truncate text-[11px] text-muted">
+                @{post.author.username}
+              </span>
+              <strong className="font-mono text-xs text-foreground">
+                +{creator.toFixed(1)} pts
+              </strong>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-background p-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="font-semibold text-foreground">
+                Freshness (20%)
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="text-[11px] text-muted">Meia-vida 12h</span>
+              <strong className="font-mono text-xs text-foreground">
+                +{fresh.toFixed(1)} pts
+              </strong>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-background p-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[#0095F6]" />
+              <span className="font-semibold text-foreground">
+                Popularidade (15%)
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="text-[11px] text-muted">
+                {post.likes} likes
+              </span>
+              <strong className="font-mono text-xs text-foreground">
+                +{pop.toFixed(1)} pts
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sinais Comportamentais Ativos/Passivos */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {metadata.has_share && (
+          <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-bold text-cyan-600 dark:text-cyan-300">
+            ✈️ Impulsionado por Share (+15)
+          </span>
+        )}
+        {metadata.has_dwell && (
+          <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-600 dark:text-amber-300">
+            👁️ Dwell Time (&ge; 3s)
+          </span>
+        )}
+        {metadata.age_hours !== undefined && (
+          <span className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] text-muted">
+            ⏱️ Idade: {metadata.age_hours}h (Recência{" "}
+            {Math.round(post.recency_score)}%)
+          </span>
+        )}
+      </div>
+
+      {/* Relevância Coletiva vs. Bolha Pessoal (LERP Cold Start) */}
+      <div className="rounded-xl border border-border bg-background p-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 font-bold text-foreground">
+            <Flame className="h-3.5 w-3.5 fill-orange-500 text-orange-500" />
+            Consenso Global vs. Bolha Pessoal
+          </span>
+          <span className="rounded-md bg-surface px-2 py-0.5 font-mono text-[10px] font-bold text-muted border border-border">
+            {csPct >= 70
+              ? "Cold Start"
+              : csPct > 0
+              ? "Transição LERP"
+              : "Bolha Pessoal"}
+          </span>
+        </div>
+
+        <div className="mt-2 space-y-1.5">
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+            {csPct > 0 && (
+              <div
+                style={{ width: `${csPct}%` }}
+                className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
+              />
+            )}
+            {pPct > 0 && (
+              <div
+                style={{ width: `${pPct}%` }}
+                className="h-full bg-gradient-to-r from-[#DD2A7B] via-[#A855F7] to-[#0095F6] transition-all duration-500"
+              />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-orange-500 dark:text-orange-400">
+              Coletivo: <strong>{csPct}%</strong>
+              {metadata.trending_score !== undefined && (
+                <span className="ml-1 text-muted">
+                  (Score {metadata.trending_score.toFixed(1)})
+                </span>
+              )}
+            </span>
+            <span className="font-semibold text-pink-600 dark:text-pink-400">
+              Individual: <strong>{pPct}%</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Diagnóstico em Linguagem Natural */}
+      <div className="rounded-xl border border-border bg-background p-3 text-xs leading-relaxed text-muted">
+        <span className="font-bold text-[#0095F6]">
+          Diagnóstico do Motor:{" "}
+        </span>
+        <span className="text-foreground">{metadata.match_reason}</span>
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -179,21 +474,19 @@ function StoryViewerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-[#262626] bg-[#121212] shadow-2xl"
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-[#262626] bg-[#121212] text-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Barra de progresso simulada de Story */}
         <div className="flex gap-1 px-3 pt-3">
           <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/20">
             <div className="h-full w-full bg-white" />
           </div>
         </div>
 
-        {/* Header do Story */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
             <div className="rounded-full bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4] p-[2px]">
@@ -203,7 +496,7 @@ function StoryViewerModal({
             </div>
             <div>
               <p className="text-xs font-bold text-white">@{style.handle}</p>
-              <p className="text-[11px] text-[#A8A8A8]">Canal de {category}</p>
+              <p className="text-[11px] text-[#a8a8a8]">Canal de {category}</p>
             </div>
           </div>
           <button
@@ -214,20 +507,17 @@ function StoryViewerModal({
           </button>
         </div>
 
-        {/* Corpo Visual do Story */}
         <div
-          className={`flex min-h-[340px] flex-col items-center justify-center bg-gradient-to-b ${style.canvasBg} px-6 py-10 text-center`}
+          className={`flex min-h-[320px] flex-col items-center justify-center bg-gradient-to-b ${style.canvasBg} px-6 py-10 text-center`}
         >
           <span className="mb-3 text-6xl">{style.emoji}</span>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${style.badge}`}
-          >
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold text-white">
             {category}
           </span>
 
           <div className="mt-6 w-full rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur-md">
-            <p className="text-xs uppercase tracking-wider text-[#A8A8A8]">
-              Nível de Afinidade no seu Perfil
+            <p className="text-xs uppercase tracking-wider text-[#a8a8a8]">
+              Afinidade Atual no seu Perfil
             </p>
             <p className="mt-1 font-mono text-3xl font-black text-white">
               {Math.round(score)}%
@@ -242,10 +532,8 @@ function StoryViewerModal({
               {isBubble
                 ? "🔥 Este tema faz parte do Núcleo da sua Bolha. O algoritmo prioriza publicações deste criador no topo do seu feed."
                 : isBlind
-                ? "🔇 Este tema está na sua Zona Cega. Ele foi silenciado por falta de engajamento e só aparece via Furo de Bolha."
-                : "⚖️ Este tema está na Zona Neutra. Curta ou salve publicações de " +
-                  category +
-                  " no feed para trazê-lo para sua bolha."}
+                ? "🔇 Este tema está na sua Zona Cega e só aparece via Furo de Bolha."
+                : "⚖️ Este tema está na Zona Neutra. Interaja no feed para trazê-lo para sua bolha."}
             </p>
           </div>
         </div>
@@ -255,81 +543,95 @@ function StoryViewerModal({
 }
 
 // ============================================================================
-// SUBCOMPONENTE: CARD DE POSTAGEM ESTILO INSTAGRAM + RAIO-X SOB DEMANDA
+// SUBCOMPONENTE: CARD DE PUBLICAÇÃO (SEPARAÇÃO ESTRITA SOCIAL VS LAB)
 // ============================================================================
-function PostCard({
-  post,
-  rankIndex,
-  viewMode,
-  isBusy,
-  isCurrentProcessing,
-  userAffinity,
-  onInteract,
-  onPassiveInteract,
-}: {
+interface PostCardProps {
   post: ExtendedPost;
   rankIndex: number;
-  viewMode: "social" | "lab";
   isBusy: boolean;
   isCurrentProcessing: boolean;
   userAffinity: number;
+  optimistic: OptimisticReactionState;
+  isInspected: boolean;
+  onInspect: (postId: string) => void;
   onInteract: (postId: string, category: Category, action: ActionType) => void;
-  onPassiveInteract: (postId: string, category: Category, action: "dwell" | "fast_skip") => void;
-}) {
-  const [userXRayOverride, setUserXRayOverride] = useState<boolean | null>(null);
-  const [prevViewMode, setPrevViewMode] = useState<"social" | "lab">(viewMode);
-  const [showHeartBurst, setShowHeartBurst] = useState<boolean>(false);
+  onPassiveInteract: (
+    postId: string,
+    category: Category,
+    action: "dwell" | "fast_skip"
+  ) => void;
+}
 
+function PostCard({
+  post,
+  rankIndex,
+  isBusy,
+  isCurrentProcessing,
+  userAffinity,
+  optimistic,
+  isInspected,
+  onInspect,
+  onInteract,
+  onPassiveInteract,
+}: PostCardProps) {
+  const { viewMode } = useViewMode();
+  const [showHeartBurst, setShowHeartBurst] = useState(false);
+  const [showCommentBox, setShowCommentBox] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [localComments, setLocalComments] = useState<string[]>([]);
+
+  // Rastreamento passivo de Dwell Time via IntersectionObserver (>60% visível)
   const cardRef = useRef<HTMLElement | null>(null);
-  const dwellTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const visibleStartTimeRef = useRef<number | null>(null);
-  const hasDispatchedDwellRef = useRef<boolean>(false);
-  const hasDispatchedFastSkipRef = useRef<boolean>(false);
+  const visibleStartRef = useRef<number | null>(null);
+  const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasSentDwellRef = useRef<boolean>(false);
+  const hasSentFastSkipRef = useRef<boolean>(false);
 
-  // Rastreamento passivo de Dwell Time (> 60% visível):
-  // >= 3s envia dwell (+2 tema, +1 criador)
-  // < 1s envia fast_skip (-1.5 tema, -1 criador)
   useEffect(() => {
     const element = cardRef.current;
     if (!element || typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            visibleStartTimeRef.current = Date.now();
-            if (!hasDispatchedDwellRef.current) {
-              dwellTimerRef.current = setTimeout(() => {
-                hasDispatchedDwellRef.current = true;
-                onPassiveInteract(post.id, post.category, "dwell");
-              }, 3000);
-            }
-          } else {
-            if (dwellTimerRef.current) {
-              clearTimeout(dwellTimerRef.current);
+        const entry = entries[0];
+        if (!entry) return;
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          visibleStartRef.current = performance.now();
+
+          if (!hasSentDwellRef.current && !dwellTimerRef.current) {
+            dwellTimerRef.current = setTimeout(() => {
+              hasSentDwellRef.current = true;
               dwellTimerRef.current = null;
-            }
-            if (visibleStartTimeRef.current !== null) {
-              const elapsed = Date.now() - visibleStartTimeRef.current;
-              visibleStartTimeRef.current = null;
-              if (
-                elapsed > 100 &&
-                elapsed < 1000 &&
-                !hasDispatchedDwellRef.current &&
-                !hasDispatchedFastSkipRef.current
-              ) {
-                hasDispatchedFastSkipRef.current = true;
-                onPassiveInteract(post.id, post.category, "fast_skip");
-              }
+              onPassiveInteract(post.id, post.category, "dwell");
+            }, 3000);
+          }
+        } else {
+          if (dwellTimerRef.current) {
+            clearTimeout(dwellTimerRef.current);
+            dwellTimerRef.current = null;
+          }
+
+          if (visibleStartRef.current !== null) {
+            const elapsedMs = performance.now() - visibleStartRef.current;
+            visibleStartRef.current = null;
+
+            if (
+              elapsedMs > 80 &&
+              elapsedMs < 1000 &&
+              !hasSentDwellRef.current &&
+              !hasSentFastSkipRef.current
+            ) {
+              hasSentFastSkipRef.current = true;
+              onPassiveInteract(post.id, post.category, "fast_skip");
             }
           }
         }
       },
-      { threshold: [0.6] }
+      { threshold: [0, 0.6] }
     );
 
     observer.observe(element);
-
     return () => {
       observer.disconnect();
       if (dwellTimerRef.current) {
@@ -338,561 +640,381 @@ function PostCard({
     };
   }, [post.id, post.category, onPassiveInteract]);
 
-  if (prevViewMode !== viewMode) {
-    setPrevViewMode(viewMode);
-    setUserXRayOverride(null);
-  }
-
-  const isXRayOpen =
-    userXRayOverride !== null ? userXRayOverride : viewMode === "lab";
-
   const style = CATEGORY_STYLES[post.category] || CATEGORY_STYLES.Tecnologia;
   const { metadata } = post;
-
-  // Cálculo proporcional da participação dos 4 sinais do Value Model
-  const aff = Math.max(0, metadata.breakdown.affinity_points);
-  const creator = Math.max(
-    0,
-    metadata.breakdown.creator_points ?? userAffinity * 0.2
-  );
-  const fresh = Math.max(
-    0,
-    metadata.breakdown.freshness_points ?? metadata.breakdown.recency_points
-  );
-  const pop = Math.max(0, metadata.breakdown.popularity_points);
-  const totalRaw = aff + creator + fresh + pop || 1;
-
-  const affPercent = (aff / totalRaw) * 100;
-  const creatorPercent = (creator / totalRaw) * 100;
-  const freshPercent = (fresh / totalRaw) * 100;
-  const popPercent = (pop / totalRaw) * 100;
-  const hasPenalty = metadata.penalty_applied !== 0;
   const isHighAffinityAuthor = userAffinity >= 70;
 
+  const isLiked = Boolean(optimistic.liked);
+  const isSaved = Boolean(optimistic.saved);
+  const isShared = Boolean(optimistic.shared);
+  const displayedLikes = post.likes + (optimistic.extraLikes ?? 0);
+
   const handleDoubleTapLike = () => {
-    if (isBusy) return;
     setShowHeartBurst(true);
-    setTimeout(() => setShowHeartBurst(false), 750);
-    onInteract(post.id, post.category, "LIKE");
+    setTimeout(() => setShowHeartBurst(false), 800);
+    if (!isBusy) {
+      onInteract(post.id, post.category, "LIKE");
+    }
+  };
+
+  const handleCommentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentText.trim()) return;
+    setLocalComments((prev) => [...prev, commentText.trim()]);
+    setCommentText("");
+    setShowCommentBox(false);
+    // Comentário engaja atenção equivalente a dwell
+    onPassiveInteract(post.id, post.category, "dwell");
   };
 
   return (
     <article
       ref={cardRef}
-      className={`overflow-hidden rounded-2xl border transition-all duration-300 ${
-        metadata.is_exploration_slot && viewMode === "lab"
-          ? "border-amber-400/80 bg-[#121212] shadow-[0_0_25px_rgba(251,191,36,0.12)]"
-          : "border-[#262626] bg-[#121212]"
-      } ${isCurrentProcessing ? "opacity-75 ring-1 ring-[#0095F6]" : ""}`}
+      className={`overflow-hidden rounded-2xl border bg-surface transition-all duration-200 ${
+        viewMode === "lab" && isInspected
+          ? "border-[#0095F6] ring-1 ring-[#0095F6]/50"
+          : viewMode === "lab" && metadata.is_exploration_slot
+          ? "border-amber-500/60"
+          : "border-border"
+      } ${isCurrentProcessing ? "opacity-80" : ""}`}
     >
       {/* 1. CABEÇALHO DO POST */}
       <div className="flex items-center justify-between gap-2 px-4 py-3">
-        <div className="flex items-center gap-3">
-          {/* Avatar com Anel de Story se estiver na bolha */}
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Avatar estilizado com anel de Story */}
           <div
-            className={`rounded-full p-[2px] ${
+            className={`shrink-0 rounded-full p-[2px] ${
               isHighAffinityAuthor
                 ? "bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4]"
-                : "bg-[#262626]"
+                : "bg-border"
             }`}
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-xs font-bold text-foreground">
               {post.author.display_name.slice(0, 2).toUpperCase()}
             </div>
           </div>
 
-          <div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-bold text-white">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-bold text-foreground">
                 {post.author.username}
               </span>
               <span
                 title="Criador Verificado"
-                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0095F6] text-[9px] font-black text-white"
+                className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#0095F6] text-[9px] font-black text-white"
               >
                 ✓
               </span>
-              <span className="text-xs text-[#A8A8A8]">
-                • {formatRelativeTime(post.recency_score, post.age_hours ?? metadata.age_hours)}
+              <span className="shrink-0 text-xs text-muted">
+                •{" "}
+                {formatRelativeTime(
+                  post.recency_score,
+                  post.age_hours ?? metadata.age_hours
+                )}
               </span>
               {viewMode === "lab" && (
-                <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-zinc-300">
+                <span className="rounded bg-foreground/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-foreground">
                   #{rankIndex + 1}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-[11px] text-[#A8A8A8]">
-              <span>{post.author.display_name}</span>
-              <span>•</span>
-              <span className="text-zinc-300">
-                {style.emoji} {post.category}
-              </span>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span className="truncate">{post.author.display_name}</span>
+              {viewMode === "lab" && (
+                <>
+                  <span>•</span>
+                  <span className="font-semibold text-foreground">
+                    {style.emoji} {post.category}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Indicadores discretos de Exploração / Categoria / Tendência Global */}
-        <div className="flex items-center gap-2">
-          {metadata.is_trending && (
-            <span
-              title={`Em Alta na Rede: Top 15% de momentum global (${metadata.trending_score !== undefined ? metadata.trending_score.toFixed(1) : ""}/100)`}
-              className="inline-flex items-center gap-1 rounded-full border border-orange-500/60 bg-orange-500/15 px-2.5 py-0.5 text-[11px] font-bold text-orange-400"
-            >
-              <Flame className="h-3 w-3 fill-orange-400 text-orange-400" />
-              <span>Em Alta</span>
-            </span>
-          )}
-
-          {metadata.is_exploration_slot && (
-            <span
-              title="Conteúdo injetado pelo algoritmo para testar novos interesses fora da sua bolha atual"
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
-                viewMode === "lab"
-                  ? "border-amber-400 bg-amber-400/20 text-amber-300"
-                  : "border-zinc-700 bg-zinc-800/80 text-zinc-300"
-              }`}
-            >
-              <Sparkles className="h-3 w-3 text-amber-400" />
-              {viewMode === "lab" ? "Furo de Bolha" : "Sugestão para você"}
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setUserXRayOverride(!isXRayOpen)}
-            title="Inspecionar motivos da recomendação"
-            className="rounded-full p-1.5 text-[#A8A8A8] transition hover:bg-white/10 hover:text-white"
-          >
-            <MoreHorizontal className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* 2. ÁREA DE MÍDIA / CANVAS VISUAL */}
-<div
-  onDoubleClick={handleDoubleTapLike}
-  className={`group relative flex min-h-[260px] cursor-pointer select-none flex-col justify-between overflow-hidden border-y border-[#262626] bg-gradient-to-br ${style.canvasBg} p-6 sm:min-h-[300px] sm:p-8`}
->
-  {/* Verifica se existe image_url ou mediaUrl vindo da API */}
-  {(post.image_url || post.mediaUrl) ? (
-    <div className="absolute inset-0 h-full w-full">
-      <img
-        src={post.image_url || post.mediaUrl}
-        alt={post.title}
-        referrerPolicy="no-referrer" // 👈 Adicione isso
-        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-      />
-      {/* Gradiente escuro sutil sobre a imagem para garantir legibilidade do título por cima */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/20" />
-      
-      {/* Conteúdo flutuante sobre a imagem */}
-      <div className="relative z-10 flex items-center justify-between">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-md ${style.badge}`}>
-          <span>{style.emoji}</span>
-          {post.category}
-        </span>
-      </div>
-
-      <div className="relative z-10 my-auto py-4">
-        <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-md sm:text-2xl">
-          {post.title}
-        </h3>
-      </div>
-
-      <div className="relative z-10 flex items-center justify-between text-xs text-zinc-300">
-        <span className="font-mono text-[11px] text-zinc-300/90">
-          @{post.author.username}
-        </span>
-        {viewMode === "lab" && (
-          <span className="rounded-md border border-white/10 bg-black/60 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
-            Score: {metadata.final_score.toFixed(1)}
-          </span>
-        )}
-      </div>
-    </div>
-  ) : (
-    // Fallback original caso o post não possua imagem cadastrada na API
-    <>
-      <div className="pointer-events-none absolute -right-6 -top-6 text-[130px] opacity-[0.07] transition-transform duration-500 group-hover:scale-110">
-        {style.emoji}
-      </div>
-      <div className="flex items-center justify-between">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-md ${style.badge}`}>
-          <span>{style.emoji}</span>
-          {post.category}
-        </span>
-        <span className="text-[11px] font-medium text-white/40 opacity-0 transition group-hover:opacity-100">
-          Duplo clique para curtir ♥
-        </span>
-      </div>
-      <div className="my-auto py-4">
-        <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-2xl">
-          {post.title}
-        </h3>
-      </div>
-      <div className="flex items-center justify-between text-xs text-zinc-400">
-        <span className="font-mono text-[11px] text-zinc-400/90">
-          @{post.author.username}
-        </span>
-        {viewMode === "lab" && (
-          <span className="rounded-md border border-white/10 bg-black/50 px-2 py-0.5 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
-            Score: {metadata.final_score.toFixed(1)}
-          </span>
-        )}
-      </div>
-    </>
-  )}
-
-  {/* Animação de Coração no Duplo Clique */}
-  {showHeartBurst && (
-    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/20">
-      <Heart className="h-24 w-24 animate-ping fill-[#ED4956] text-[#ED4956] drop-shadow-lg" />
-    </div>
-  )}
-</div>
-
-      {/* 3. BARRA DE AÇÕES COMPACTA (ESTILO INSTAGRAM + SIMULADOR) */}
-      <div className="px-4 pt-3 pb-4">
-        <div className="flex items-center justify-between gap-2">
-          {/* Ações Primárias Esquerda: Curtir, Inspecionar Algoritmo */}
-          <div className="flex items-center gap-2">
-            {/* Botão Curtir (LIKE) */}
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => onInteract(post.id, post.category, "LIKE")}
-              title="Curtir publicação (+5 pts de afinidade no tema)"
-              className="group flex items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2 text-sm font-semibold text-white transition hover:border-[#ED4956]/40 hover:bg-[#ED4956]/10 hover:text-[#ff6b78] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Heart className="h-6 w-6 transition group-hover:fill-[#ED4956] group-hover:text-[#ED4956]" />
-              <span className="text-xs font-bold">Curtir</span>
-              {viewMode === "lab" && (
-                <span className="rounded bg-[#ED4956]/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#ff6b78]">
-                  +5
+        {/* Direita do Header: Zero Ruído no Modo Social | Badges + Raio-X no Modo Lab */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {viewMode === "lab" ? (
+            <>
+              {metadata.is_trending && (
+                <span
+                  title={`Em Alta na Rede: Score Global ${
+                    metadata.trending_score?.toFixed(1) ?? ""
+                  }`}
+                  className="hidden sm:inline-flex items-center gap-1 rounded-full border border-orange-500/40 bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-500 dark:text-orange-400"
+                >
+                  <Flame className="h-3 w-3 fill-current" />
+                  Em Alta
                 </span>
               )}
-            </button>
-
-            {/* Botão Salvar (SAVE) */}
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => onInteract(post.id, post.category, "SAVE")}
-              title="Repostar publicação (+10 pts de super-afinidade no tema)"
-              className="group flex items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2 text-sm font-semibold text-white transition hover:border-[#0095F6]/40 hover:bg-[#0095F6]/10 hover:text-[#58b6ff] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Repeat className="h-6 w-6 transition group-hover:fill-[#0095F6] group-hover:text-[#0095F6]" />
-              <span className="text-xs font-bold">Repostar</span>
-              {viewMode === "lab" && (
-                <span className="rounded bg-[#0095F6]/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#58b6ff]">
-                  +10
+              {metadata.is_exploration_slot && (
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-300">
+                  <Sparkles className="h-3 w-3" />
+                  Furo de Bolha
                 </span>
               )}
-            </button>
-
-            {/* Botão Compartilhar / Direct (SHARE) - Sinal #1 de Ranking da Meta */}
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => onInteract(post.id, post.category, "SHARE")}
-              title="Compartilhar via Direct (+15 pts tema, +12 criador - Maior peso do motor)"
-              className="group flex items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-2 text-sm font-semibold text-white transition hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Send className="h-5 w-5 text-zinc-300 transition group-hover:text-cyan-400" />
-              <span className="text-xs font-bold">Share</span>
-              {viewMode === "lab" && (
-                <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-300">
-                  +15
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Ações Direita: Pular Post e Botão Raio-X */}
-          <div className="flex items-center gap-2">
-            {/* Botão Pular / Sem Interesse (SKIP) */}
+              <button
+                type="button"
+                onClick={() => onInspect(post.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition ${
+                  isInspected
+                    ? "border-[#0095F6] bg-[#0095F6] text-white"
+                    : "border-border bg-background text-foreground hover:border-[#0095F6]/60"
+                }`}
+              >
+                <Sliders className="h-3.5 w-3.5" />
+                <span>Inspecionar Raio-X</span>
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               disabled={isBusy}
               onClick={() => onInteract(post.id, post.category, "SKIP")}
-              title="Pular publicação (Sinal de desinteresse / Penalidade)"
-              className="flex items-center gap-1.5 rounded-xl border border-[#262626] bg-[#1a1a1a] px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Ocultar / Não tenho interesse"
+              className="rounded-full p-1.5 text-muted transition hover:bg-foreground/5 hover:text-foreground"
             >
-              <FastForward className="h-4 w-4 text-zinc-400" />
-              <span>Pular</span>
+              <MoreHorizontal className="h-5 w-5" />
             </button>
+          )}
+        </div>
+      </div>
 
-            {/* Toggle do Raio-X da Recomendação */}
+      {/* 2. ÁREA DE MÍDIA / CANVAS VISUAL (COM DOUBLE-TAP TO LIKE) */}
+      <div
+        onDoubleClick={handleDoubleTapLike}
+        className={`group relative flex min-h-[280px] cursor-pointer select-none flex-col justify-between overflow-hidden border-y border-border bg-gradient-to-br ${style.canvasBg} p-6 sm:min-h-[340px] sm:p-8`}
+      >
+        {post.image_url || post.mediaUrl ? (
+          <div className="absolute inset-0 h-full w-full">
+            <img
+              src={post.image_url || post.mediaUrl}
+              alt={post.title}
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/15" />
+
+            {/* Badges no Canvas apenas no Modo Lab */}
+            {viewMode === "lab" && (
+              <div className="relative z-10 flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/50 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
+                  <span>{style.emoji}</span>
+                  {post.category}
+                </span>
+                <span className="rounded-lg border border-white/15 bg-black/65 px-2.5 py-1 font-mono text-xs font-bold text-emerald-400 backdrop-blur-md">
+                  Score: {metadata.final_score.toFixed(1)}
+                </span>
+              </div>
+            )}
+
+            <div className="relative z-10 mt-auto pt-24">
+              <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-md sm:text-2xl">
+                {post.title}
+              </h3>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="pointer-events-none absolute -right-6 -top-6 text-[130px] opacity-[0.08] transition-transform duration-500 group-hover:scale-110">
+              {style.emoji}
+            </div>
+            {viewMode === "lab" ? (
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
+                  <span>{style.emoji}</span>
+                  {post.category}
+                </span>
+                <span className="rounded-lg border border-white/15 bg-black/55 px-2.5 py-1 font-mono text-xs font-bold text-emerald-400 backdrop-blur-sm">
+                  Score: {metadata.final_score.toFixed(1)}
+                </span>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            <div className="my-auto py-6">
+              <h3 className="text-xl font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-2xl">
+                {post.title}
+              </h3>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-zinc-300">
+              <span className="font-mono text-[11px] opacity-80">
+                @{post.author.username}
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Animação de Coração Saltando no Centro (Double-Tap) */}
+        {showHeartBurst && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <Heart className="h-24 w-24 animate-heart-pop fill-[#ed4956] text-[#ed4956] drop-shadow-[0_8px_24px_rgba(237,73,86,0.55)]" />
+          </div>
+        )}
+      </div>
+
+      {/* 3. BARRA DE AÇÕES E CONTEÚDO (EXPERIÊNCIA SOCIAL PURA + ATUALIZAÇÃO OTIMISTA) */}
+      <div className="px-4 pt-3 pb-4">
+        <div className="flex items-center justify-between">
+          {/* Esquerda: Like, Comment Simulado, Share/Aviãozinho */}
+          <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => setUserXRayOverride(!isXRayOpen)}
-              className={`flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition ${
-                isXRayOpen
-                  ? "border-[#0095F6]/50 bg-[#0095F6]/15 text-[#0095F6]"
-                  : "border-[#262626] bg-transparent text-[#A8A8A8] hover:text-white"
-              }`}
+              disabled={isBusy}
+              onClick={() => onInteract(post.id, post.category, "LIKE")}
+              aria-label="Curtir publicação"
+              className="group inline-flex items-center gap-1.5 text-foreground transition active:scale-90 disabled:opacity-50"
             >
-              <Sliders className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Raio-X</span>
-              {isXRayOpen ? (
-                <ChevronUp className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
-              )}
+              <Heart
+                className={`h-6 w-6 transition-transform duration-200 group-hover:scale-110 ${
+                  isLiked
+                    ? "fill-[#ed4956] text-[#ed4956] scale-110"
+                    : "text-foreground hover:text-[#ed4956]"
+                }`}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCommentBox((prev) => !prev)}
+              aria-label="Comentar publicação"
+              className="group inline-flex items-center gap-1.5 text-foreground transition hover:text-muted active:scale-90"
+            >
+              <MessageCircle className="h-6 w-6 transition-transform duration-200 group-hover:scale-110" />
+            </button>
+
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onInteract(post.id, post.category, "SHARE")}
+              aria-label="Compartilhar publicação"
+              className="group inline-flex items-center gap-1.5 text-foreground transition active:scale-90 disabled:opacity-50"
+            >
+              <Send
+                className={`h-6 w-6 transition-transform duration-200 group-hover:scale-110 ${
+                  isShared
+                    ? "text-[#0095F6]"
+                    : "text-foreground hover:text-[#0095F6]"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Direita: Pular (no Lab) e Save / Bookmark Otimista */}
+          <div className="flex items-center gap-3">
+            {viewMode === "lab" && (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => onInteract(post.id, post.category, "SKIP")}
+                title="Pular publicação (-4 pts de afinidade)"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted transition hover:text-foreground active:scale-95 disabled:opacity-50"
+              >
+                <FastForward className="h-3.5 w-3.5" />
+                <span>Pular</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onInteract(post.id, post.category, "SAVE")}
+              aria-label="Salvar publicação"
+              className="group inline-flex items-center text-foreground transition active:scale-90 disabled:opacity-50"
+            >
+              <Bookmark
+                className={`h-6 w-6 transition-transform duration-200 group-hover:scale-110 ${
+                  isSaved
+                    ? "fill-foreground text-foreground scale-110"
+                    : "text-foreground hover:text-muted"
+                }`}
+              />
             </button>
           </div>
         </div>
 
         {/* Contagem de Curtidas */}
-        <div className="mt-2.5 flex items-center gap-2 text-xs font-bold text-white">
-          <span>{post.likes.toLocaleString("pt-BR")} curtidas</span>
-          {viewMode === "lab" && (
-            <span className="font-normal text-[#A8A8A8]">
-              • Recência bruta: {Math.round(post.recency_score)}/100
-            </span>
-          )}
+        <div className="mt-2.5 flex items-center gap-2 text-xs font-bold text-foreground">
+          <span>{displayedLikes.toLocaleString("pt-BR")} curtidas</span>
         </div>
 
-        {/* Legenda Estilo Instagram (Username + Texto) */}
-        <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
-          <span className="mr-2 font-bold text-white">
-            {post.author.username}
-          </span>
+        {/* Legenda Estilo Instagram */}
+        <div className="mt-1.5 text-sm leading-relaxed text-foreground">
+          <span className="mr-2 font-bold">{post.author.username}</span>
           <span>{post.content}</span>
         </div>
 
-        {/* Botão de Transparência no Modo Social quando o Raio-X está fechado */}
-        {!isXRayOpen && (
-          <button
-            type="button"
-            onClick={() => setUserXRayOverride(true)}
-            className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#A8A8A8] transition hover:text-[#0095F6]"
+        {/* Comentários locais adicionados pelo usuário */}
+        {localComments.length > 0 && (
+          <div className="mt-2 space-y-1 text-xs">
+            {localComments.map((c, idx) => (
+              <div key={idx} className="text-foreground">
+                <span className="mr-1.5 font-bold">voce</span>
+                <span>{c}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input rápido de comentário simulado */}
+        {showCommentBox && (
+          <form
+            onSubmit={handleCommentSubmit}
+            className="mt-3 flex items-center gap-2 border-t border-border pt-2.5"
           >
-            <Info className="h-3.5 w-3.5" />
-            <span>Por que estou vendo esta publicação?</span>
-          </button>
+            <input
+              type="text"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Adicione um comentário..."
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!commentText.trim()}
+              className="text-xs font-bold text-[#0095F6] disabled:opacity-40"
+            >
+              Publicar
+            </button>
+          </form>
+        )}
+
+        {/* Rodapé discreto exclusivo do Modo Lab */}
+        {viewMode === "lab" && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2.5 text-[11px]">
+            <div className="flex items-center gap-1.5 text-muted">
+              <Eye className="h-3.5 w-3.5 text-[#0095F6]" />
+              <span className="line-clamp-1">{metadata.match_reason}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onInspect(post.id)}
+              className="shrink-0 font-bold text-[#0095F6] hover:underline"
+            >
+              Abrir Raio-X →
+            </button>
+          </div>
         )}
       </div>
-
-      {/* 4. GAVETA DE RAIO-X DO ALGORITMO (TRANSPARÊNCIA EDUCACIONAL) */}
-      {isXRayOpen && (
-        <div className="border-t border-[#262626] bg-[#0a0a0a] px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#0095F6]">
-                Raio-X da Recomendação
-              </span>
-              {hasPenalty && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/50 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-300">
-                  <AlertCircle className="h-3 w-3" />
-                  Penalidade:{" "}
-                  {metadata.penalty_applied > 0
-                    ? `-${metadata.penalty_applied}`
-                    : metadata.penalty_applied}{" "}
-                  pts
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-[#A8A8A8]">
-                Score Final Ponderado:
-              </span>
-              <span className="rounded bg-emerald-500/15 px-2 py-0.5 font-mono text-sm font-black text-emerald-400">
-                {metadata.final_score.toFixed(1)}
-              </span>
-            </div>
-          </div>
-
-          {/* Barra de Participação Efetiva neste Post vs Pesos do Motor */}
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-[10px] text-[#A8A8A8]">
-              <span>Value Model do Instagram (Pesos Fixos):</span>
-              <span>45% Tema / 20% Criador / 20% Freshness / 15% Pop</span>
-            </div>
-
-            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-800 p-0.5">
-              <div
-                style={{ width: `${affPercent}%` }}
-                className="h-full bg-[#DD2A7B] transition-all duration-500"
-                title={`Tema: ${aff.toFixed(1)} pts (${Math.round(affPercent)}% do score)`}
-              />
-              <div
-                style={{ width: `${creatorPercent}%` }}
-                className="h-full bg-[#A855F7] transition-all duration-500"
-                title={`Criador: ${creator.toFixed(1)} pts (${Math.round(creatorPercent)}% do score)`}
-              />
-              <div
-                style={{ width: `${freshPercent}%` }}
-                className="h-full bg-emerald-400 transition-all duration-500"
-                title={`Freshness (Half-life 12h): ${fresh.toFixed(1)} pts (${Math.round(freshPercent)}% do score)`}
-              />
-              <div
-                style={{ width: `${popPercent}%` }}
-                className="h-full bg-[#0095F6] transition-all duration-500"
-                title={`Popularidade: ${pop.toFixed(1)} pts (${Math.round(popPercent)}% do score)`}
-              />
-            </div>
-
-            <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4 text-[11px]">
-              <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[#DD2A7B]" />
-                  <span className="font-semibold text-zinc-300">Tema (45%)</span>
-                </div>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">{post.category}</span>
-                  <strong className="font-mono text-xs text-white">
-                    +{aff.toFixed(1)} pts
-                  </strong>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[#A855F7]" />
-                  <span className="font-semibold text-zinc-300">Criador (20%)</span>
-                </div>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">@{post.author.username}</span>
-                  <strong className="font-mono text-xs text-white">
-                    +{creator.toFixed(1)} pts
-                  </strong>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span className="font-semibold text-zinc-300">Freshness (20%)</span>
-                </div>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">T½ = 12h</span>
-                  <strong className="font-mono text-xs text-white">
-                    +{fresh.toFixed(1)} pts
-                  </strong>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#262626] bg-[#121212] p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[#0095F6]" />
-                  <span className="font-semibold text-zinc-300">Popularidade (15%)</span>
-                </div>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className="text-[10px] text-[#A8A8A8]">{post.likes} likes</span>
-                  <strong className="font-mono text-xs text-white">
-                    +{pop.toFixed(1)} pts
-                  </strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Sinais Comportamentais Registrados (Dwell / Share / Idade) */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              {metadata.has_share && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-cyan-500/50 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-300">
-                  ✈️ Compartilhado via Direct (+15)
-                </span>
-              )}
-              {metadata.has_dwell && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                  👁️ Dwell Time detectado (&ge; 3s)
-                </span>
-              )}
-              {metadata.age_hours !== undefined && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300">
-                  ⏱️ Idade: {metadata.age_hours}h decorridas
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Dinâmica: Relevância Coletiva vs. Bolha Pessoal */}
-          <div className="mt-3 rounded-xl border border-zinc-800/90 bg-[#141414] p-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 font-bold text-zinc-200">
-                <Flame className="h-3.5 w-3.5 fill-orange-400 text-orange-400" />
-                Relevância Coletiva vs. Bolha Pessoal
-              </span>
-              <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] font-bold text-zinc-300">
-                {metadata.cold_start_factor && metadata.cold_start_factor >= 0.7
-                  ? "Cold Start (< 3 ações)"
-                  : metadata.cold_start_factor && metadata.cold_start_factor > 0
-                  ? "Transição LERP"
-                  : "Bolha Pessoal"}
-              </span>
-            </div>
-
-            {/* Barra Bicolor LERP */}
-            {(() => {
-              const csPct = Math.round((metadata.cold_start_factor ?? 0) * 100);
-              const pPct = 100 - csPct;
-              return (
-                <div className="mt-2 space-y-1.5">
-                  <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-800 p-0.5">
-                    {csPct > 0 && (
-                      <div
-                        style={{ width: `${csPct}%` }}
-                        className="h-full rounded-l-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
-                        title={`Consenso Coletivo: ${csPct}% de influência na recomendação`}
-                      />
-                    )}
-                    {pPct > 0 && (
-                      <div
-                        style={{ width: `${pPct}%` }}
-                        className={`h-full ${
-                          csPct === 0 ? "rounded-full" : "rounded-r-full"
-                        } bg-gradient-to-r from-[#DD2A7B] via-[#A855F7] to-[#0095F6] transition-all duration-500`}
-                        title={`Bolha Pessoal: ${pPct}% de influência na recomendação`}
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="font-semibold text-orange-400">
-                      Consenso Coletivo: <strong>{csPct}%</strong>
-                      {metadata.trending_score !== undefined && (
-                        <span className="ml-1 text-zinc-400">
-                          (Momentum: {metadata.trending_score.toFixed(1)})
-                        </span>
-                      )}
-                    </span>
-                    <span className="font-semibold text-pink-400">
-                      Bolha Individual: <strong>{pPct}%</strong>
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
-              {metadata.cold_start_factor && metadata.cold_start_factor >= 0.7
-                ? "❄️ Modo Cold Start: Você possui poucas interações na sessão. O algoritmo impulsiona publicações com maior momentum global na rede."
-                : metadata.cold_start_factor && metadata.cold_start_factor > 0
-                ? "📈 Transição LERP: A influência coletiva está decrescendo conforme suas ações individuais moldam sua bolha exclusiva."
-                : "🎯 Bolha Consolidada: As métricas do seu perfil comandam 100% da ordenação deste conteúdo."}
-            </p>
-          </div>
-
-          {/* Explicação em linguagem natural (match_reason) */}
-          <div className="mt-3 rounded-lg border border-[#262626] bg-[#121212] px-3 py-2 text-xs text-zinc-300">
-            <span className="font-bold text-[#0095F6]">
-              Diagnóstico do Motor:{" "}
-            </span>
-            {metadata.match_reason}
-          </div>
-        </div>
-      )}
     </article>
   );
 }
 
 // ============================================================================
-// PÁGINA PRINCIPAL: BUGSTAGRAM (SINGLE FILE APP.TSX)
+// PÁGINA PRINCIPAL: BUGSTAGRAM
 // ============================================================================
 export default function BugstagramPage() {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const {
+    viewMode,
+    setViewMode,
+    inspectedPostId,
+    setInspectedPostId,
+  } = useViewMode();
+
   const [feed, setFeed] = useState<ExtendedPost[]>([]);
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -900,9 +1022,16 @@ export default function BugstagramPage() {
   const [isResetting, setIsResetting] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // Novos estados de Experiência e Telemetria
-  const [viewMode, setViewMode] = useState<"social" | "lab">("social");
-  const [activeMobileTab, setActiveMobileTab] = useState<"feed" | "lab">("feed");
+  // Estados de reação otimista por post_id
+  const [optimisticMap, setOptimisticMap] = useState<
+    Record<string, OptimisticReactionState>
+  >({});
+
+  // Drawers mobile (Trending / Telemetria da Bolha)
+  const [mobileSheet, setMobileSheet] = useState<
+    "none" | "trending" | "telemetry"
+  >("none");
+
   const [selectedStoryCategory, setSelectedStoryCategory] =
     useState<Category | null>(null);
 
@@ -912,7 +1041,9 @@ export default function BugstagramPage() {
     type: "info" | "error";
   } | null>(null);
 
-  const [globalTrending, setGlobalTrending] = useState<GlobalTrendingPost[]>([]);
+  const [globalTrending, setGlobalTrending] = useState<GlobalTrendingPost[]>(
+    []
+  );
 
   const [telemetry, setTelemetry] = useState<SessionTelemetry>({
     totalInteractions: 0,
@@ -924,7 +1055,6 @@ export default function BugstagramPage() {
     interactedCategories: {},
   });
 
-  // Trava global para impedir race conditions entre interações e reset
   const isBusy = Boolean(processingPostId) || isResetting || isLoading;
 
   const showToast = useCallback(
@@ -934,10 +1064,9 @@ export default function BugstagramPage() {
     []
   );
 
-  // Auto-dismiss para toasts informativos
   useEffect(() => {
     if (!toast || toast.type === "error") return;
-    const timer = setTimeout(() => setToast(null), 3500);
+    const timer = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -1010,8 +1139,6 @@ export default function BugstagramPage() {
     action: ActionType
   ) => {
     if (isBusy) return;
-    setProcessingPostId(postId);
-    setApiError(null);
 
     const actUpper = action.toUpperCase();
     const isLike = actUpper === "LIKE";
@@ -1020,11 +1147,28 @@ export default function BugstagramPage() {
     const isSkip = actUpper === "SKIP";
     const isDwell = actUpper === "DWELL";
 
+    // 1. Atualização Otimista Instantânea nos Ícones
+    setOptimisticMap((prev) => {
+      const curr = prev[postId] || {};
+      return {
+        ...prev,
+        [postId]: {
+          liked: isLike ? true : curr.liked,
+          saved: isSave ? true : curr.saved,
+          shared: isShare ? true : curr.shared,
+          extraLikes: (curr.extraLikes ?? 0) + (isLike && !curr.liked ? 1 : 0),
+        },
+      };
+    });
+
+    setProcessingPostId(postId);
+    setApiError(null);
+
     const deltaLabel: Record<string, string> = {
       LIKE: "Curtida registrada (+5 pts tema, +8 criador)",
-      SAVE: "Repostado (+10 pts tema, +12 criador)",
+      SAVE: "Salvo na coleção (+10 pts tema, +12 criador)",
       SHARE: "Compartilhado via Direct! (+15 pts tema, +12 criador)",
-      SKIP: "Post pulado (Sinal de desinteresse em " + category + ")",
+      SKIP: "Publicação ocultada (-4 pts em " + category + ")",
       DWELL: "Dwell Time registrado (+2 pts tema, +1 criador)",
       FAST_SKIP: "Rolagem rápida detectada (-1.5 pts tema)",
     };
@@ -1034,7 +1178,6 @@ export default function BugstagramPage() {
       setProfile(updated.profile);
       setFeed(updated.feed);
 
-      // Atualiza telemetria real da sessão
       setTelemetry((prev) => ({
         totalInteractions: prev.totalInteractions + 1,
         likes: prev.likes + (isLike ? 1 : 0),
@@ -1045,18 +1188,18 @@ export default function BugstagramPage() {
         interactedCategories: {
           ...prev.interactedCategories,
           [category]:
-            (prev.interactedCategories[category] ?? 0) +
-            (isSkip ? 0 : 1),
+            (prev.interactedCategories[category] ?? 0) + (isSkip ? 0 : 1),
         },
       }));
 
-      showToast(
-        `${CATEGORY_STYLES[category].emoji} ${category}`,
-        deltaLabel[actUpper] || "Interação processada",
-        "info"
-      );
+      if (viewMode === "lab" || isShare) {
+        showToast(
+          `${CATEGORY_STYLES[category].emoji} ${category}`,
+          deltaLabel[actUpper] || "Interação processada",
+          "info"
+        );
+      }
 
-      // Atualiza ranking global de momentum após interação
       getGlobalMetrics()
         .then((res) => setGlobalTrending(res.top_trending))
         .catch(() => {});
@@ -1083,8 +1226,8 @@ export default function BugstagramPage() {
             dwells: prev.dwells + 1,
           }));
         }
-      } catch (err) {
-        console.debug("Telemetry passiva:", err);
+      } catch {
+        // Silencioso para telemetria passiva
       }
     },
     []
@@ -1098,6 +1241,8 @@ export default function BugstagramPage() {
       const resetData = await resetSimulation();
       setProfile(resetData.profile);
       setFeed(resetData.feed);
+      setOptimisticMap({});
+      setInspectedPostId(null);
       setTelemetry({
         totalInteractions: 0,
         likes: 0,
@@ -1109,7 +1254,7 @@ export default function BugstagramPage() {
       });
       showToast(
         "Simulação Reiniciada",
-        "Todos os pesos voltaram para 50% (estado neutro).",
+        "Todos os pesos voltaram para 50% (Cold Start).",
         "info"
       );
 
@@ -1128,7 +1273,7 @@ export default function BugstagramPage() {
     }
   };
 
-  // Segmentação automática para o Diagnóstico da Bolha
+  // Segmentação da Bolha
   const bubbleCore = useMemo(
     () => ALL_CATEGORIES.filter((cat) => (profile[cat] ?? 0) >= 70),
     [profile]
@@ -1145,7 +1290,6 @@ export default function BugstagramPage() {
     [profile]
   );
 
-  // Métricas mensuráveis de exploração no feed atual
   const explorationCount = useMemo(
     () => feed.filter((p) => p.metadata.is_exploration_slot).length,
     [feed]
@@ -1153,18 +1297,33 @@ export default function BugstagramPage() {
   const explorationRatio =
     feed.length > 0 ? Math.round((explorationCount / feed.length) * 100) : 0;
 
+  // Post inspecionado atualmente para o Bottom Sheet Mobile ou Painel Lateral Desktop
+  const inspectedPost = useMemo(() => {
+    if (!inspectedPostId) return null;
+    return feed.find((p) => p.id === inspectedPostId) || null;
+  }, [feed, inspectedPostId]);
+
+  const activeDesktopLabPost = inspectedPost || feed[0] || null;
+
+  const handleInspectPost = useCallback(
+    (postId: string) => {
+      setInspectedPostId(inspectedPostId === postId ? null : postId);
+    },
+    [inspectedPostId, setInspectedPostId]
+  );
+
   return (
-    <div className="min-h-screen bg-black pb-16 text-white selection:bg-pink-500 selection:text-white lg:pb-0">
+    <div className="min-h-screen bg-background pb-20 text-foreground transition-colors duration-200 md:pb-10">
       {/* =====================================================================
-          TOAST FLUTUANTE NÃO-INTRUSIVO (SUBSTITUI WINDOW.ALERT)
+          TOAST FLUTUANTE
       ===================================================================== */}
       {toast && (
-        <div className="fixed bottom-20 right-4 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-4 lg:bottom-6 lg:right-6">
+        <div className="fixed bottom-20 right-4 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-4 md:bottom-6 md:right-6">
           <div
             className={`flex items-start gap-3 rounded-2xl border p-3.5 shadow-2xl backdrop-blur-md ${
               toast.type === "error"
                 ? "border-rose-500/60 bg-rose-950/90 text-rose-100"
-                : "border-[#262626] bg-[#161616]/95 text-white"
+                : "border-border bg-surface/95 text-foreground"
             }`}
           >
             {toast.type === "error" ? (
@@ -1174,11 +1333,11 @@ export default function BugstagramPage() {
             )}
             <div className="flex-1 text-xs">
               <p className="font-bold">{toast.title}</p>
-              <p className="mt-0.5 text-zinc-300">{toast.subtitle}</p>
+              <p className="mt-0.5 text-muted">{toast.subtitle}</p>
             </div>
             <button
               onClick={() => setToast(null)}
-              className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
+              className="rounded-lg p-1 text-muted hover:bg-foreground/10 hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
@@ -1186,7 +1345,7 @@ export default function BugstagramPage() {
         </div>
       )}
 
-      {/* Modal de Story quando um círculo é clicado */}
+      {/* Modal de Story */}
       {selectedStoryCategory && (
         <StoryViewerModal
           category={selectedStoryCategory}
@@ -1196,263 +1355,321 @@ export default function BugstagramPage() {
       )}
 
       {/* =====================================================================
-          TOPBAR LIMPA E FOCADA
+          MOBILE BOTTOM SHEET / DRAWER: RAIO-X DO POST (< 768px)
       ===================================================================== */}
-      <header className="sticky top-0 z-40 border-b border-[#262626] bg-black/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          {/* Identidade da Marca */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4] p-0.5 shadow-md shadow-pink-500/10">
-              <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-black">
-                <Sparkles className="h-5 w-5 text-[#DD2A7B]" />
+      {viewMode === "lab" && inspectedPost && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-xs md:hidden"
+          onClick={() => setInspectedPostId(null)}
+        >
+          <div
+            className="animate-sheet-up max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-safe shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border" />
+            <div className="mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#0095F6]">
+                <Sliders className="h-4 w-4" />
+                Raio-X da Recomendação
+              </span>
+              <button
+                type="button"
+                onClick={() => setInspectedPostId(null)}
+                className="rounded-full p-1.5 text-muted hover:bg-foreground/10 hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <PostXRayDetails
+              post={inspectedPost}
+              userAffinity={profile[inspectedPost.category] ?? 50}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MOBILE BOTTOM SHEET: TRENDING OU TELEMETRIA DA BOLHA (< 768px)
+      ===================================================================== */}
+      {mobileSheet !== "none" && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-xs md:hidden"
+          onClick={() => setMobileSheet("none")}
+        >
+          <div
+            className="animate-sheet-up max-h-[82vh] w-full overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-safe shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border" />
+            <div className="mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-extrabold text-foreground">
+                {mobileSheet === "trending" ? (
+                  <>
+                    <Flame className="h-4 w-4 fill-orange-500 text-orange-500" />
+                    Em Alta na Rede (Consenso Global)
+                  </>
+                ) : (
+                  <>
+                    <BarChart3 className="h-4 w-4 text-[#0095F6]" />
+                    Telemetria da sua Bolha
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileSheet("none")}
+                className="rounded-full p-1.5 text-muted hover:bg-foreground/10 hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {mobileSheet === "trending" ? (
+              <div className="space-y-2.5">
+                {globalTrending.map((tp, idx) => {
+                  const catStyle =
+                    CATEGORY_STYLES[tp.category] || CATEGORY_STYLES.Tecnologia;
+                  return (
+                    <div
+                      key={tp.post_id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background p-3 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="font-mono text-xs font-black text-orange-500">
+                          #{idx + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-foreground">
+                            {catStyle.emoji} {tp.title}
+                          </p>
+                          <p className="text-[11px] text-muted">
+                            {tp.total_likes} likes · {tp.total_shares}{" "}
+                            compartilhamentos
+                          </p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-lg bg-orange-500/15 px-2.5 py-1 font-mono text-xs font-black text-orange-500">
+                        {Math.round(tp.trending_score)} pts
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ALL_CATEGORIES.map((category) => {
+                  const rawScore = profile[category] ?? 0;
+                  const style = CATEGORY_STYLES[category];
+                  return (
+                    <div key={category} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-foreground">
+                          {style.emoji} {category}
+                        </span>
+                        <span className="font-mono font-bold text-foreground">
+                          {Math.round(rawScore)}%
+                        </span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                        <div
+                          style={{
+                            width: `${Math.min(100, Math.max(0, rawScore))}%`,
+                          }}
+                          className={`h-full rounded-full bg-gradient-to-r ${style.bar}`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          TOP BAR FIXA (MOBILE & DESKTOP) COM PILL SWITCHER E TOGGLE DE TEMA
+      ===================================================================== */}
+      <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          {/* Logo Estilizada */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4] p-[1.5px] shadow-xs">
+              <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-background">
+                <Flame className="h-4 w-4 text-[#DD2A7B]" />
               </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">
-                  Bugstagram
-                </h1>
-                <span className="hidden rounded-full border border-[#262626] bg-[#121212] px-2.5 py-0.5 text-[10px] font-semibold text-[#A8A8A8] sm:inline-block">
-                  Simulador de Recomendação
-                </span>
-              </div>
-            </div>
+            <span className="text-lg font-black tracking-tight text-foreground">
+              Bugstagram
+            </span>
           </div>
 
-          {/* Seletor Central: Modo Social vs Modo Laboratório */}
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-xl border border-[#262626] bg-[#121212] p-1">
+          {/* Controles Centrais/Direita: Pill Switcher (Social | Lab) + Tema + Reset */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Pill Switcher Rápido: Social | Lab */}
+            <div
+              role="group"
+              aria-label="Modo de Visualização"
+              className="inline-flex items-center rounded-full border border-border bg-surface p-0.5"
+            >
               <button
                 type="button"
                 onClick={() => setViewMode("social")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-all ${
                   viewMode === "social"
-                    ? "bg-white text-black shadow-sm"
-                    : "text-[#A8A8A8] hover:text-white"
+                    ? "bg-foreground text-background shadow-xs"
+                    : "text-muted hover:text-foreground"
                 }`}
               >
-                <Eye className="h-3.5 w-3.5" />
-                <span>Modo Social</span>
+                <span>Social</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setViewMode("lab")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-all ${
                   viewMode === "lab"
-                    ? "bg-[#0095F6] text-white shadow-sm"
-                    : "text-[#A8A8A8] hover:text-white"
+                    ? "bg-[#0095F6] text-white shadow-xs"
+                    : "text-muted hover:text-foreground"
                 }`}
               >
-                <Sliders className="h-3.5 w-3.5" />
-                <span>Modo Lab</span>
+                <Sliders className="h-3 w-3" />
+                <span>Lab</span>
               </button>
             </div>
 
-            {/* Indicador Discreto da Engine Go */}
-            <div
+            {/* Botão de Alternância de Tema (Light / Dark) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label="Alternar tema claro ou escuro"
               title={
-                apiError
-                  ? `Erro: ${apiError}`
-                  : "Conectado ao motor Go na porta 8080"
+                resolvedTheme === "dark"
+                  ? "Mudar para Modo Claro"
+                  : "Mudar para Modo Escuro (OLED)"
               }
-              className={`hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold sm:flex ${
-                apiError
-                  ? "border-rose-500/50 bg-rose-950/40 text-rose-300"
-                  : "border-[#262626] bg-[#121212] text-zinc-300"
-              }`}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-foreground transition hover:bg-foreground/5 active:scale-95"
             >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  apiError ? "bg-rose-500" : "animate-pulse bg-emerald-400"
+              {resolvedTheme === "dark" ? (
+                <Sun className="h-4 w-4 text-amber-400 transition-transform duration-200 hover:rotate-45" />
+              ) : (
+                <Moon className="h-4 w-4 text-slate-700 transition-transform duration-200 hover:-rotate-12" />
+              )}
+            </button>
+
+            {/* Botão Reset no Desktop */}
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={isBusy}
+              title="Reiniciar simulação da sessão"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-bold text-foreground transition hover:bg-foreground/5 active:scale-95 disabled:opacity-50"
+            >
+              <RotateCcw
+                className={`h-3.5 w-3.5 text-[#0095F6] ${
+                  isResetting ? "animate-spin" : ""
                 }`}
               />
-              <span>{apiError ? "API Offline" : "Go Engine"}</span>
-            </div>
+              <span>Resetar</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Banner de Erro de Conexão (Integrado, sem window.alert) */}
+      {/* Banner de Erro se API Offline */}
       {apiError && (
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
-          <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-rose-500/60 bg-rose-950/30 p-4 text-rose-100 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 shrink-0 text-rose-400" />
-              <div>
-                <h2 className="text-xs font-bold uppercase tracking-wider text-rose-300">
-                  Servidor Go Inacessível (http://localhost:8080)
-                </h2>
-                <p className="text-xs text-rose-200">{apiError}</p>
-              </div>
+        <div className="mx-auto mt-3 max-w-xl px-4">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-500/10 px-4 py-3 text-xs text-rose-600 dark:text-rose-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+              <span>{apiError}</span>
             </div>
             <button
               onClick={loadInitialData}
-              disabled={isLoading}
-              className="shrink-0 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-500 disabled:opacity-50"
+              className="shrink-0 rounded-lg bg-rose-500 px-3 py-1 font-bold text-white"
             >
-              Tentar Reconectar
+              Reconectar
             </button>
           </div>
         </div>
       )}
 
       {/* =====================================================================
-          ESTRUTURA EM 3 COLUNAS ESTILO INSTAGRAM WEB:
-          [Sidebar Nav (2 col)] + [Feed Social Central (6 col)] + [Laboratório (4 col)]
+          SHELL PRINCIPAL: FEED CENTRALIZADO (470px-540px) + PAINEL LAB DESKTOP
       ===================================================================== */}
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-12">
-        {/* COLUNA 1: NAVEGAÇÃO LATERAL DESKTOP (2 COLUNAS) */}
-        <nav className="hidden lg:col-span-2 lg:block">
-          <div className="sticky top-20 flex flex-col justify-between space-y-6 rounded-2xl border border-[#262626] bg-[#121212] p-4">
-            <div className="space-y-1.5">
-              <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#A8A8A8]">
-                Navegação
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("social")}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                  viewMode === "social"
-                    ? "bg-white/10 text-white"
-                    : "text-[#A8A8A8] hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Home className="h-5 w-5" />
-                <span>Feed Social</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("lab")}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                  viewMode === "lab"
-                    ? "bg-[#0095F6]/15 text-[#0095F6]"
-                    : "text-[#A8A8A8] hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Compass className="h-5 w-5" />
-                <span>Raio-X Total</span>
-              </button>
-            </div>
-
-            {/* Resumo Rápido de Interações na Sidebar */}
-            <div className="border-t border-[#262626] pt-4">
-              <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-[#A8A8A8]">
-                Sua Sessão
-              </p>
-              <div className="mt-2 grid grid-cols-5 gap-1 text-center">
-                <div className="rounded-lg bg-black/60 p-1">
-                  <p className="font-mono text-xs font-bold text-[#ff6b78]">
-                    {telemetry.likes}
-                  </p>
-                  <p className="text-[8px] text-[#A8A8A8]">Likes</p>
-                </div>
-                <div className="rounded-lg bg-black/60 p-1">
-                  <p className="font-mono text-xs font-bold text-[#58b6ff]">
-                    {telemetry.saves}
-                  </p>
-                  <p className="text-[8px] text-[#A8A8A8]">Salvos</p>
-                </div>
-                <div className="rounded-lg bg-black/60 p-1">
-                  <p className="font-mono text-xs font-bold text-cyan-400">
-                    {telemetry.shares}
-                  </p>
-                  <p className="text-[8px] text-[#A8A8A8]">Shares</p>
-                </div>
-                <div className="rounded-lg bg-black/60 p-1">
-                  <p className="font-mono text-xs font-bold text-amber-400">
-                    {telemetry.dwells}
-                  </p>
-                  <p className="text-[8px] text-[#A8A8A8]">Dwells</p>
-                </div>
-                <div className="rounded-lg bg-black/60 p-1">
-                  <p className="font-mono text-xs font-bold text-zinc-400">
-                    {telemetry.skips}
-                  </p>
-                  <p className="text-[8px] text-[#A8A8A8]">Pulos</p>
-                </div>
+      <main className="mx-auto flex max-w-6xl justify-center gap-8 px-3 pt-4 sm:px-4 md:pt-6">
+        {/* COLUNA CENTRAL DO FEED (LARGURA CONTIDA PADRÃO INSTAGRAM WEB) */}
+        <section className="w-full max-w-[540px] shrink-0">
+          {/* HUD DISCRETO EXCLUSIVO DO MODO LAB */}
+          {viewMode === "lab" && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#0095F6]/40 bg-[#0095F6]/10 px-3.5 py-2.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-[#0095F6]" />
+                <span className="font-bold text-foreground">
+                  HUD do Algoritmo:
+                </span>
+                <span className="text-muted">
+                  {telemetry.totalInteractions < 3
+                    ? "❄️ Cold Start (Consenso Global)"
+                    : `🎯 Bolha Ativa (${bubbleCore.length} dominante${
+                        bubbleCore.length === 1 ? "" : "s"
+                      })`}
+                </span>
               </div>
-
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={isBusy}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#262626] bg-[#1a1a1a] px-3 py-2.5 text-xs font-bold text-white transition hover:border-zinc-600 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RotateCcw
-                  className={`h-3.5 w-3.5 text-[#0095F6] ${
-                    isResetting ? "animate-spin" : ""
-                  }`}
-                />
-                <span>{isResetting ? "Resetando..." : "Zerar Bolha"}</span>
-              </button>
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                <span className="rounded bg-background/80 px-2 py-0.5 font-bold text-[#0095F6]">
+                  {100 - explorationRatio}% Bolha
+                </span>
+                <span className="rounded bg-background/80 px-2 py-0.5 font-bold text-amber-500">
+                  {explorationRatio}% Furo
+                </span>
+              </div>
             </div>
-          </div>
-        </nav>
+          )}
 
-        {/* =====================================================================
-            COLUNA 2: FEED SOCIAL CENTRAL (6 COLUNAS NO DESKTOP)
-        ===================================================================== */}
-        <section
-          className={`mx-auto w-full max-w-xl space-y-6 lg:col-span-6 ${
-            activeMobileTab === "lab" ? "hidden lg:block" : "block"
-          }`}
-        >
-          {/* FAIXA HORIZONTAL DE STORIES (CRIADORES FICTÍCIOS + PULSO DE AFINIDADE) */}
-          <div className="rounded-2xl border border-[#262626] bg-[#121212] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-200">
-                {viewMode === "social"
-                  ? "Stories de Criadores"
-                  : "Stories • Pulso de Afinidade por Categoria"}
-              </span>
-              <span className="text-[11px] text-[#A8A8A8]">
-                Toque para inspecionar
-              </span>
-            </div>
-
-            <div className="flex gap-4 overflow-x-auto pb-1">
-              {ALL_CATEGORIES.map((category) => {
-                const score = Math.round(profile[category] ?? 0);
+          {/* BARRA DE STORIES DE CATEGORIAS */}
+          <div className="mb-5 rounded-2xl border border-border bg-surface p-3">
+            <div className="no-scrollbar flex items-center gap-3.5 overflow-x-auto">
+              {ALL_CATEGORIES.map((cat) => {
+                const score = Math.round(profile[cat] ?? 50);
+                const style = CATEGORY_STYLES[cat];
                 const isHigh = score >= 70;
                 const isBlind = score <= 29;
-                const style = CATEGORY_STYLES[category];
 
                 return (
                   <button
-                    key={category}
+                    key={cat}
                     type="button"
-                    onClick={() => setSelectedStoryCategory(category)}
-                    className={`group flex shrink-0 flex-col items-center gap-1.5 transition ${
-                      isBlind ? "opacity-45 grayscale hover:opacity-80" : ""
-                    }`}
+                    onClick={() => setSelectedStoryCategory(cat)}
+                    className="group flex shrink-0 flex-col items-center gap-1 focus:outline-none"
                   >
                     <div
                       className={`rounded-full p-[2.5px] transition-transform group-hover:scale-105 ${
                         isHigh
-                          ? "bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4] shadow-md shadow-pink-500/20"
-                          : "bg-[#262626]"
+                          ? "bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4]"
+                          : isBlind && viewMode === "lab"
+                          ? "bg-rose-500/40 opacity-50"
+                          : "bg-gradient-to-tr from-zinc-400 to-zinc-600 dark:from-zinc-700 dark:to-zinc-500"
                       }`}
                     >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-black bg-[#181818] text-2xl">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-surface bg-background text-2xl">
                         {style.emoji}
                       </div>
                     </div>
 
-                    <span className="max-w-[72px] truncate text-[11px] font-medium text-zinc-200">
-                      {viewMode === "social" ? style.handle : category}
+                    <span className="max-w-[64px] truncate text-[11px] font-medium text-foreground">
+                      {cat}
                     </span>
 
                     {viewMode === "lab" && (
                       <span
                         className={`font-mono text-[10px] font-bold ${
                           isHigh
-                            ? "text-emerald-400"
+                            ? "text-emerald-500"
                             : isBlind
-                            ? "text-rose-400"
-                            : "text-[#A8A8A8]"
+                            ? "text-rose-500"
+                            : "text-muted"
                         }`}
                       >
                         {score}%
@@ -1464,39 +1681,33 @@ export default function BugstagramPage() {
             </div>
           </div>
 
-          {/* LISTA DE PUBLICAÇÕES OU SKELETON / EMPTY STATE */}
+          {/* LISTA DE POSTS DO FEED */}
           {isLoading ? (
             <div className="space-y-6">
               {[1, 2].map((skeleton) => (
                 <div
                   key={skeleton}
-                  className="h-[420px] animate-pulse rounded-2xl border border-[#262626] bg-[#121212] p-6"
+                  className="h-[420px] animate-pulse rounded-2xl border border-border bg-surface p-6"
                 />
               ))}
             </div>
           ) : feed.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-[#262626] bg-[#121212] px-6 py-16 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-[#FEDA77] via-[#DD2A7B] to-[#515BD4] p-0.5">
-                <div className="flex h-full w-full items-center justify-center rounded-full bg-[#121212]">
-                  <RotateCcw className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              <h2 className="text-xl font-extrabold text-white">
-                Você chegou ao fim do Feed!
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface px-6 py-16 text-center">
+              <RotateCcw className="mb-3 h-10 w-10 text-[#0095F6]" />
+              <h2 className="text-lg font-extrabold text-foreground">
+                Você zerou o Feed!
               </h2>
-              <p className="mt-2 max-w-md text-sm text-[#A8A8A8]">
-                Todos os posts disponíveis nesta sessão foram processados.
-                Reinicie a simulação para testar outro comportamento de bolha.
+              <p className="mt-1 max-w-sm text-xs text-muted">
+                Todas as publicações desta sessão foram consumidas. Reinicie a
+                simulação para experimentar outra trajetória de bolha.
               </p>
               <button
                 onClick={handleReset}
                 disabled={isBusy}
-                className="mt-6 flex items-center gap-2 rounded-xl bg-[#0095F6] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0095F6]/25 transition hover:bg-[#1877F2] disabled:opacity-50"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#0095F6] px-5 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#1877F2] disabled:opacity-50"
               >
-                <RotateCcw
-                  className={`h-4 w-4 ${isResetting ? "animate-spin" : ""}`}
-                />
-                {isResetting ? "Resetando..." : "Reiniciar Simulação"}
+                <RotateCcw className="h-4 w-4" />
+                Reiniciar Simulação
               </button>
             </div>
           ) : (
@@ -1506,10 +1717,12 @@ export default function BugstagramPage() {
                   key={post.id}
                   post={post}
                   rankIndex={index}
-                  viewMode={viewMode}
                   isBusy={isBusy}
                   isCurrentProcessing={processingPostId === post.id}
                   userAffinity={profile[post.category] ?? 50}
+                  optimistic={optimisticMap[post.id] || {}}
+                  isInspected={inspectedPostId === post.id}
+                  onInspect={handleInspectPost}
                   onInteract={handleInteraction}
                   onPassiveInteract={handlePassiveInteraction}
                 />
@@ -1519,316 +1732,173 @@ export default function BugstagramPage() {
         </section>
 
         {/* =====================================================================
-            COLUNA 3: LABORATÓRIO / CÉREBRO DO ALGORITMO (4 COLUNAS NO DESKTOP)
-            Métricas coloridas originais preservadas!
+            PAINEL LATERAL FIXO À DIREITA (DESKTOP ≥ 768px EM MODO LAB)
         ===================================================================== */}
-        <aside
-          className={`lg:col-span-4 ${
-            activeMobileTab === "feed" ? "hidden lg:block" : "block"
-          }`}
-        >
-          <div className="sticky top-20 space-y-5">
-            {/* CARD 1: TELEMETRIA DE EXPLORAÇÃO E COMPOSIÇÃO DO FEED */}
-            <div className="rounded-2xl border border-[#262626] bg-[#121212] p-4">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-white">
-                  <TrendingUp className="h-4 w-4 text-[#0095F6]" />
-                  Composição do Feed Atual
-                </span>
-                <span className="font-mono text-xs text-[#A8A8A8]">
-                  {feed.length} posts
-                </span>
-              </div>
-
-              <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-900">
-                <div
-                  style={{ width: `${100 - explorationRatio}%` }}
-                  className="bg-[#0095F6] transition-all duration-500"
-                  title="Recomendado por Afinidade"
-                />
-                <div
-                  style={{ width: `${explorationRatio}%` }}
-                  className="bg-amber-400 transition-all duration-500"
-                  title="Injetado via Furo de Bolha (Exploração)"
-                />
-              </div>
-
-              <div className="mt-2 flex items-center justify-between text-[11px]">
-                <span className="text-zinc-300">
-                  <strong className="text-[#0095F6]">
-                    {100 - explorationRatio}%
-                  </strong>{" "}
-                  Afinidade
-                </span>
-                <span className="text-zinc-300">
-                  <strong className="text-amber-400">
-                    {explorationRatio}%
-                  </strong>{" "}
-                  Exploração ({explorationCount} furo
-                  {explorationCount === 1 ? "" : "s"})
-                </span>
-              </div>
-
-              {telemetry.totalInteractions > 0 && (
-                <p className="mt-3 rounded-xl border border-[#262626] bg-black/50 p-2.5 text-[11px] leading-relaxed text-zinc-300">
-                  <Zap className="mr-1 inline h-3.5 w-3.5 text-amber-400" />
-                  Após <strong>{telemetry.totalInteractions}</strong>{" "}
-                  interações, você tem{" "}
-                  <strong className="text-emerald-400">
-                    {bubbleCore.length}
-                  </strong>{" "}
-                  tema(s) dominante(s) e{" "}
-                  <strong className="text-rose-400">{blindZone.length}</strong>{" "}
-                  silenciado(s).
-                </p>
-              )}
-            </div>
-
-            {/* CARD: EM ALTA NA REDE (CONSENSO COLETIVO DINÂMICO) */}
-            {globalTrending.length > 0 && (
-              <div className="rounded-2xl border border-orange-500/30 bg-[#121212] p-4 shadow-lg shadow-orange-500/5">
-                <div className="flex items-center justify-between border-b border-[#262626] pb-2.5">
-                  <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-400">
-                    <Flame className="h-4 w-4 fill-orange-400 text-orange-400" />
-                    <span>Em Alta na Rede (Momentum)</span>
+        {viewMode === "lab" && (
+          <aside className="hidden md:block w-[360px] lg:w-[390px] shrink-0">
+            <div className="sticky top-20 space-y-5 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar pb-6">
+              {/* CARD 1: INSPETOR RAIO-X EM TEMPO REAL */}
+              {activeDesktopLabPost && (
+                <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#0095F6]">
+                      <Sliders className="h-4 w-4" />
+                      Raio-X do Post Selecionado
+                    </span>
+                    <span className="font-mono text-[10px] text-muted">
+                      {inspectedPost ? "Selecionado" : "Topo do Feed (#1)"}
+                    </span>
                   </div>
-                  <span className="rounded bg-orange-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-orange-300">
-                    Top 5 Coletivo
-                  </span>
+
+                  <PostXRayDetails
+                    post={activeDesktopLabPost}
+                    userAffinity={profile[activeDesktopLabPost.category] ?? 50}
+                  />
+                </div>
+              )}
+
+              {/* CARD 2: EM ALTA NA REDE (TOP 5 MOMENTUM COLETIVO) */}
+              {globalTrending.length > 0 && (
+                <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-border pb-2.5">
+                    <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-orange-500">
+                      <Flame className="h-4 w-4 fill-current" />
+                      Em Alta na Rede (Momentum)
+                    </span>
+                    <span className="rounded bg-orange-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-orange-500">
+                      Top 5 Global
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {globalTrending.slice(0, 5).map((tp, idx) => {
+                      const catStyle =
+                        CATEGORY_STYLES[tp.category] ||
+                        CATEGORY_STYLES.Tecnologia;
+                      return (
+                        <div
+                          key={tp.post_id}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-border bg-background p-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="font-mono text-[11px] font-bold text-muted">
+                              #{idx + 1}
+                            </span>
+                            <span className="truncate font-medium text-foreground">
+                              {catStyle.emoji} {tp.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {tp.total_shares > 0 && (
+                              <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-600 dark:text-cyan-300">
+                                {tp.total_shares} ✈️
+                              </span>
+                            )}
+                            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 font-mono text-[11px] font-black text-orange-500">
+                              {Math.round(tp.trending_score)} pts
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* CARD 3: VETOR DE AFINIDADE E DIAGNÓSTICO DA BOLHA */}
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <div>
+                    <h2 className="text-sm font-extrabold text-foreground">
+                      Termômetros de Afinidade
+                    </h2>
+                    <p className="text-[11px] text-muted">
+                      Pesos personalizados da sua sessão
+                    </p>
+                  </div>
+                  <TrendingUp className="h-4 w-4 text-[#0095F6]" />
                 </div>
 
-                <div className="mt-3 space-y-2">
-                  {globalTrending.slice(0, 5).map((tp, idx) => {
-                    const catStyle =
-                      CATEGORY_STYLES[tp.category] || CATEGORY_STYLES.Tecnologia;
+                <div className="mt-3.5 space-y-2.5">
+                  {ALL_CATEGORIES.map((category) => {
+                    const rawScore = profile[category] ?? 0;
+                    const clampedWidth = Math.min(100, Math.max(0, rawScore));
+                    const style = CATEGORY_STYLES[category];
+                    const isBubble = rawScore >= 70;
+                    const isSilenced = rawScore <= 29;
+
                     return (
-                      <div
-                        key={tp.post_id}
-                        className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-black/40 p-2 text-xs"
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className="font-mono text-[11px] font-bold text-zinc-500">
-                            #{idx + 1}
+                      <div key={category} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                            <span>{style.emoji}</span>
+                            <span>{category}</span>
+                            {isBubble && (
+                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400">
+                                BOLHA
+                              </span>
+                            )}
+                            {isSilenced && (
+                              <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-extrabold text-rose-600 dark:text-rose-400">
+                                CEGA
+                              </span>
+                            )}
                           </span>
-                          <span className="truncate font-medium text-zinc-200">
-                            {catStyle.emoji} {tp.title}
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {Math.round(rawScore)}%
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {tp.total_shares > 0 && (
-                            <span
-                              title={`${tp.total_shares} compartilhamentos`}
-                              className="rounded bg-cyan-950/60 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-300"
-                            >
-                              {tp.total_shares} ✈️
-                            </span>
-                          )}
-                          <span
-                            title={`Score de Momentum: ${tp.trending_score.toFixed(1)}`}
-                            className="rounded bg-orange-500/20 px-1.5 py-0.5 font-mono text-[11px] font-black text-orange-400"
-                          >
-                            {Math.round(tp.trending_score)} pts
-                          </span>
+
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                          <div
+                            style={{ width: `${clampedWidth}%` }}
+                            className={`h-full rounded-full bg-gradient-to-r ${style.bar} transition-all duration-500`}
+                          />
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
 
-            {/* CARD 2: OS 8 TERMÔMETROS COLORIDOS DE AFINIDADE */}
-            <div className="rounded-2xl border border-[#262626] bg-[#121212] p-5 shadow-2xl">
-              <div className="flex items-center justify-between gap-2 border-b border-[#262626] pb-3.5">
-                <div>
-                  <h2 className="text-base font-extrabold tracking-tight text-white">
-                    Métricas do Algoritmo
-                  </h2>
-                  <p className="text-xs text-[#A8A8A8]">
-                    Vetor de pesos do seu perfil em tempo real
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={isBusy}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#262626] bg-[#262626] px-3 py-1.5 text-xs font-bold text-white transition hover:border-zinc-500 hover:bg-zinc-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <RotateCcw
-                    className={`h-3.5 w-3.5 text-[#0095F6] ${
-                      isResetting ? "animate-spin" : ""
-                    }`}
-                  />
-                  <span>Resetar</span>
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {ALL_CATEGORIES.map((category) => {
-                  const rawScore = profile[category] ?? 0;
-                  const clampedWidth = Math.min(100, Math.max(0, rawScore));
-                  const style = CATEGORY_STYLES[category];
-
-                  const isBubble = rawScore >= 70;
-                  const isSilenced = rawScore <= 29;
-
-                  return (
-                    <div key={category} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-bold text-zinc-100">
-                          <span>{style.emoji}</span>
-                          <span>{category}</span>
-                          {isBubble && (
-                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-extrabold text-emerald-300">
-                              DOMINANTE
-                            </span>
-                          )}
-                          {isSilenced && (
-                            <span className="rounded bg-rose-500/20 px-1.5 py-0.2 text-[10px] font-extrabold text-rose-300">
-                              SILENCIADO
-                            </span>
-                          )}
-                        </span>
-
-                        <span
-                          className={`font-mono text-xs font-black ${
-                            isBubble
-                              ? "text-emerald-400"
-                              : isSilenced
-                              ? "text-rose-400"
-                              : "text-zinc-300"
-                          }`}
-                        >
-                          {Math.round(rawScore)}%
-                        </span>
-                      </div>
-
-                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-zinc-900 ring-1 ring-[#262626]">
-                        <div
-                          style={{ width: `${clampedWidth}%` }}
-                          className={`h-full rounded-full bg-gradient-to-r ${style.bar} transition-all duration-500 ease-out`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* CARD 3: DIAGNÓSTICO DA BOLHA (NÚCLEO, NEUTRA, ZONA CEGA) */}
-            <div className="space-y-3 rounded-2xl border border-[#262626] bg-[#121212] p-5">
-              <div>
-                <h3 className="text-sm font-extrabold text-white">
-                  Diagnóstico da Bolha (Live Insights)
-                </h3>
-                <p className="text-xs text-[#A8A8A8]">
-                  Como o algoritmo classifica seu perfil agora
-                </p>
-              </div>
-
-              {/* 1. Núcleo da Bolha (Score >= 70) */}
-              <div className="rounded-xl border border-emerald-400/80 bg-emerald-950/20 p-3 shadow-[0_0_15px_rgba(16,185,129,0.12)]">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-300">
-                    <Flame className="h-4 w-4 text-emerald-400" />
-                    Núcleo da Bolha (&ge; 70%)
-                  </span>
-                  <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 font-mono text-xs font-bold text-emerald-300">
-                    {bubbleCore.length}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {bubbleCore.length === 0 ? (
-                    <span className="text-xs italic text-zinc-400">
-                      Nenhum tema dominante ainda. Curta ou salve posts!
+                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center text-[11px]">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2">
+                    <span className="block font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
+                      {bubbleCore.length}
                     </span>
-                  ) : (
-                    bubbleCore.map((cat) => (
-                      <span
-                        key={cat}
-                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-200"
-                      >
-                        {CATEGORY_STYLES[cat].emoji} {cat} (
-                        {Math.round(profile[cat])}%)
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* 2. Zona Neutra (Score entre 30 e 69) */}
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/60 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-300">
-                    Zona Neutra (30% a 69%)
-                  </span>
-                  <span className="rounded-full bg-zinc-700 px-2 py-0.5 font-mono text-xs font-bold text-zinc-200">
-                    {neutralZone.length}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {neutralZone.length === 0 ? (
-                    <span className="text-xs italic text-zinc-500">
-                      Nenhuma categoria na zona intermediária.
+                    <span className="text-muted">Dominantes</span>
+                  </div>
+                  <div className="rounded-xl border border-border bg-background p-2">
+                    <span className="block font-mono text-sm font-black text-foreground">
+                      {neutralZone.length}
                     </span>
-                  ) : (
-                    neutralZone.map((cat) => (
-                      <span
-                        key={cat}
-                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-semibold text-zinc-300"
-                      >
-                        {CATEGORY_STYLES[cat].emoji} {cat} (
-                        {Math.round(profile[cat])}%)
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* 3. Zona Cega / Excluídos (Score <= 29) */}
-              <div className="rounded-xl border border-rose-500/80 bg-rose-950/25 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-rose-300">
-                    <AlertCircle className="h-4 w-4 text-rose-400" />
-                    Zona Cega (&le; 29%)
-                  </span>
-                  <span className="rounded-full bg-rose-500/20 px-2 py-0.5 font-mono text-xs font-bold text-rose-300">
-                    {blindZone.length}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {blindZone.length === 0 ? (
-                    <span className="text-xs italic text-zinc-400">
-                      Nenhum tópico foi silenciado ainda.
+                    <span className="text-muted">Neutros</span>
+                  </div>
+                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2">
+                    <span className="block font-mono text-sm font-black text-rose-600 dark:text-rose-400">
+                      {blindZone.length}
                     </span>
-                  ) : (
-                    blindZone.map((cat) => (
-                      <span
-                        key={cat}
-                        className="inline-flex items-center gap-1 rounded-lg border border-rose-500/50 bg-rose-500/20 px-2 py-0.5 text-xs font-bold text-rose-200"
-                      >
-                        {CATEGORY_STYLES[cat].emoji} {cat} (
-                        {Math.round(profile[cat])}%)
-                      </span>
-                    ))
-                  )}
+                    <span className="text-muted">Silenciados</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </aside>
+          </aside>
+        )}
       </main>
 
       {/* =====================================================================
-          BARRA DE NAVEGAÇÃO INFERIOR PARA CELULAR (ESTILO APP DO INSTAGRAM)
+          BOTTOM NAVIGATION BAR FIXA NO MOBILE (< 768px) COM SAFE-AREA
       ===================================================================== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-[#262626] bg-black/95 py-2.5 backdrop-blur-md lg:hidden">
+      <nav className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-border bg-background/90 py-2 pb-safe backdrop-blur-md md:hidden">
         <button
           type="button"
-          onClick={() => setActiveMobileTab("feed")}
-          className={`flex flex-col items-center gap-1 text-xs font-bold ${
-            activeMobileTab === "feed" ? "text-white" : "text-[#A8A8A8]"
+          onClick={() => {
+            setMobileSheet("none");
+            setInspectedPostId(null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold transition ${
+            mobileSheet === "none" ? "text-foreground" : "text-muted"
           }`}
         >
           <Home className="h-5 w-5" />
@@ -1838,25 +1908,43 @@ export default function BugstagramPage() {
         <button
           type="button"
           onClick={() =>
-            setViewMode((prev) => (prev === "social" ? "lab" : "social"))
+            setMobileSheet((prev) =>
+              prev === "trending" ? "none" : "trending"
+            )
           }
-          className={`flex flex-col items-center gap-1 text-xs font-bold ${
-            viewMode === "lab" ? "text-[#0095F6]" : "text-[#A8A8A8]"
+          className={`flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold transition ${
+            mobileSheet === "trending" ? "text-orange-500" : "text-muted"
           }`}
         >
-          <Sliders className="h-5 w-5" />
-          <span>{viewMode === "lab" ? "Modo Lab ON" : "Raio-X"}</span>
+          <Compass className="h-5 w-5" />
+          <span>Explorar</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveMobileTab("lab")}
-          className={`flex flex-col items-center gap-1 text-xs font-bold ${
-            activeMobileTab === "lab" ? "text-emerald-400" : "text-[#A8A8A8]"
+          onClick={() =>
+            setMobileSheet((prev) =>
+              prev === "telemetry" ? "none" : "telemetry"
+            )
+          }
+          className={`flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold transition ${
+            mobileSheet === "telemetry" ? "text-[#0095F6]" : "text-muted"
           }`}
         >
-          <Flame className="h-5 w-5" />
-          <span>Métricas ({bubbleCore.length})</span>
+          <BarChart3 className="h-5 w-5" />
+          <span>Bolha ({bubbleCore.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={isBusy}
+          className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-muted transition hover:text-foreground disabled:opacity-40"
+        >
+          <RotateCcw
+            className={`h-5 w-5 ${isResetting ? "animate-spin" : ""}`}
+          />
+          <span>Reset</span>
         </button>
       </nav>
     </div>

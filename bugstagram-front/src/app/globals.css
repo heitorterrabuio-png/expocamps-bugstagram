@@ -1,26 +1,92 @@
 @import "tailwindcss";
 
-:root {
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root,
+.light {
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: #fafafa;
+  --border-color: #dbdbdb;
+  --foreground: #000000;
+  --muted: #737373;
+}
+
+.dark {
+  --background: #000000;
+  --surface: #121212;
+  --border-color: #262626;
+  --foreground: #f5f5f5;
+  --muted: #a8a8a8;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border-color);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes heartPop {
+  0% {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1.22);
+    opacity: 1;
+  }
+  65% {
+    transform: scale(0.95);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.08);
+    opacity: 0;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.animate-heart-pop {
+  animation: heartPop 0.78s cubic-bezier(0.17, 0.89, 0.32, 1.49) forwards;
+}
+
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-sheet-up {
+  animation: sheetSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Utilitário para esconder barra de rolagem horizontal nos Stories mantendo scroll fluido */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Suporte a Safe Area no iOS / Android */
+.pb-safe {
+  padding-bottom: max(0.65rem, env(safe-area-inset-bottom));
 }
