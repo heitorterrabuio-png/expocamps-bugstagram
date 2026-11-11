@@ -43,9 +43,12 @@ import {
 import {
   getFeed,
   getGlobalMetrics,
-  getProfile,
+  getProfileState,
   interact,
+  loadSessionSnapshot,
   resetSimulation,
+  saveSessionSnapshot,
+  syncSessionState,
 } from "@/services/api";
 
 // ============================================================================
@@ -393,6 +396,22 @@ function PostXRayDetails({
           <span className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] text-muted">
             ⏱️ Idade: {metadata.age_hours}h (Recência{" "}
             {Math.round(post.recency_score)}%)
+          </span>
+        )}
+        {metadata.fatigue_multiplier !== undefined && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${
+              metadata.fatigue_multiplier < 0.99
+                ? "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-300"
+                : "border-border bg-background text-muted"
+            }`}
+          >
+            💤 Fadiga: x{metadata.fatigue_multiplier.toFixed(2)}
+          </span>
+        )}
+        {metadata.jitter_applied !== undefined && (
+          <span className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-mono text-violet-600 dark:text-violet-300">
+            🎲 Jitter: +{metadata.jitter_applied.toFixed(2)} pts
           </span>
         )}
       </div>
@@ -1070,19 +1089,71 @@ export default function BugstagramPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const hydrateSessionFromBackend = useCallback(async () => {
+    const [profileState, fetchedFeed, metricsRes] = await Promise.all([
+      getProfileState(),
+      getFeed(),
+      getGlobalMetrics().catch(() => null),
+    ]);
+
+    const snapshot = loadSessionSnapshot();
+    const hasLocalBubble =
+      snapshot &&
+      (snapshot.consumed_count > 0 ||
+        Object.keys(snapshot.post_fatigue ?? {}).length > 0);
+
+    // Se o backend em memória reiniciou (consumed_count === 0) mas o navegador tem sessão salva,
+    // reidrata automaticamente o vetor de afinidade e a fadiga no Go sem perder a bolha no F5.
+    if (profileState.consumed_count === 0 && hasLocalBubble && snapshot) {
+      const synced = await syncSessionState({
+        profile: snapshot.profile,
+        consumed_count: snapshot.consumed_count,
+        post_fatigue: snapshot.post_fatigue,
+      });
+      const restoredCount = synced.consumed_count ?? snapshot.consumed_count;
+      saveSessionSnapshot({
+        profile: synced.profile,
+        consumed_count: restoredCount,
+        post_fatigue: synced.post_fatigue ?? snapshot.post_fatigue,
+      });
+      return {
+        profile: synced.profile,
+        feed: synced.feed,
+        consumedCount: restoredCount,
+        metricsRes,
+      };
+    }
+
+    const activeCount = Math.max(
+      profileState.consumed_count,
+      snapshot?.consumed_count ?? 0
+    );
+    saveSessionSnapshot({
+      profile: profileState.profile,
+      consumed_count: activeCount,
+      post_fatigue: profileState.post_fatigue ?? snapshot?.post_fatigue,
+    });
+    return {
+      profile: profileState.profile,
+      feed: fetchedFeed,
+      consumedCount: activeCount,
+      metricsRes,
+    };
+  }, []);
+
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
     setApiError(null);
     try {
-      const [fetchedProfile, fetchedFeed, metricsRes] = await Promise.all([
-        getProfile(),
-        getFeed(),
-        getGlobalMetrics().catch(() => null),
-      ]);
-      setProfile(fetchedProfile);
-      setFeed(fetchedFeed);
-      if (metricsRes) {
-        setGlobalTrending(metricsRes.top_trending);
+      const result = await hydrateSessionFromBackend();
+      setProfile(result.profile);
+      setFeed(result.feed);
+      setTelemetry((prev) => ({
+        ...prev,
+        totalInteractions: result.consumedCount,
+      }));
+      if (result.metricsRes) {
+        setGlobalTrending(result.metricsRes.top_trending);
       }
     } catch (err) {
       const message =
@@ -1094,22 +1165,22 @@ export default function BugstagramPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [hydrateSessionFromBackend, showToast]);
 
   useEffect(() => {
     let ignore = false;
     async function init() {
       try {
-        const [fetchedProfile, fetchedFeed, metricsRes] = await Promise.all([
-          getProfile(),
-          getFeed(),
-          getGlobalMetrics().catch(() => null),
-        ]);
+        const result = await hydrateSessionFromBackend();
         if (!ignore) {
-          setProfile(fetchedProfile);
-          setFeed(fetchedFeed);
-          if (metricsRes) {
-            setGlobalTrending(metricsRes.top_trending);
+          setProfile(result.profile);
+          setFeed(result.feed);
+          setTelemetry((prev) => ({
+            ...prev,
+            totalInteractions: result.consumedCount,
+          }));
+          if (result.metricsRes) {
+            setGlobalTrending(result.metricsRes.top_trending);
           }
         }
       } catch (err) {
@@ -1131,7 +1202,7 @@ export default function BugstagramPage() {
     return () => {
       ignore = true;
     };
-  }, [showToast]);
+  }, [hydrateSessionFromBackend, showToast]);
 
   const handleInteraction = async (
     postId: string,
@@ -1178,8 +1249,16 @@ export default function BugstagramPage() {
       setProfile(updated.profile);
       setFeed(updated.feed);
 
+      const persistedCount =
+        updated.consumed_count ?? telemetry.totalInteractions + 1;
+      saveSessionSnapshot({
+        profile: updated.profile,
+        consumed_count: persistedCount,
+        post_fatigue: updated.post_fatigue,
+      });
+
       setTelemetry((prev) => ({
-        totalInteractions: prev.totalInteractions + 1,
+        totalInteractions: Math.max(prev.totalInteractions + 1, persistedCount),
         likes: prev.likes + (isLike ? 1 : 0),
         saves: prev.saves + (isSave ? 1 : 0),
         shares: prev.shares + (isShare ? 1 : 0),
@@ -1220,6 +1299,11 @@ export default function BugstagramPage() {
       try {
         const updated = await interact(postId, category, action);
         setProfile(updated.profile);
+        saveSessionSnapshot({
+          profile: updated.profile,
+          consumed_count: updated.consumed_count ?? 0,
+          post_fatigue: updated.post_fatigue,
+        });
         if (action === "dwell") {
           setTelemetry((prev) => ({
             ...prev,

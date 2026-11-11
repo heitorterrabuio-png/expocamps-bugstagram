@@ -54,6 +54,14 @@ export interface ExplanationMetadata {
   is_trending?: boolean;
   cold_start_factor?: number;
   personal_weight?: number;
+  fatigue_multiplier?: number;
+  jitter_applied?: number;
+}
+
+export interface PostFatigueRecord {
+  interactions: number;
+  last_seen_at: string;
+  was_skipped?: boolean;
 }
 
 export interface ScoredPost {
@@ -95,7 +103,21 @@ export interface GlobalMetricsResponse {
 
 export type UserProfile = Record<Category, number>;
 
+export interface SessionSyncPayload {
+  profile: UserProfile;
+  consumed_count: number;
+  post_fatigue?: Record<string, PostFatigueRecord>;
+}
+
+export interface ProfileResponse {
+  profile: UserProfile;
+  consumed_count: number;
+  post_fatigue?: Record<string, PostFatigueRecord>;
+}
+
 export interface SimulationStateResponse {
   profile: UserProfile;
   feed: ScoredPost[];
+  consumed_count?: number;
+  post_fatigue?: Record<string, PostFatigueRecord>;
 }

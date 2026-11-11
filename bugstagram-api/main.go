@@ -131,10 +131,33 @@ func main() {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		_, _, fatigue := appState.GetProfileWithFatigue(sid)
 
 		writeJSON(w, http.StatusOK, StateSyncResponse{
 			Profile:       profile,
 			ConsumedCount: consumedCount,
+			PostFatigue:   fatigue,
+			Feed:          feed,
+		})
+	}
+
+	// Handler para reidratar sessão persistida no localStorage caso o servidor reinicie
+	handleSessionSync := func(w http.ResponseWriter, r *http.Request) {
+		sid := getSessionID(r)
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
+		var req SessionSyncRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "payload JSON inválido: "+err.Error())
+			return
+		}
+
+		profile, consumedCount, feed := appState.SyncSession(req, sid)
+		_, _, fatigue := appState.GetProfileWithFatigue(sid)
+		writeJSON(w, http.StatusOK, StateSyncResponse{
+			Profile:       profile,
+			ConsumedCount: consumedCount,
+			PostFatigue:   fatigue,
 			Feed:          feed,
 		})
 	}
@@ -155,26 +178,30 @@ func main() {
 			writeJSON(w, http.StatusOK, feed)
 		})
 
-		// 2. GET /api/profile -> Retorna o UserProfile atual e a contagem de posts consumidos
+		// 2. GET /api/profile -> Retorna o UserProfile atual, contagem de engajamentos e mapa de fadiga
 		r.Get("/profile", func(w http.ResponseWriter, r *http.Request) {
 			sid := getSessionID(r)
-			profile, consumedCount := appState.GetProfile(sid)
+			profile, consumedCount, fatigue := appState.GetProfileWithFatigue(sid)
 			writeJSON(w, http.StatusOK, ProfileResponse{
 				Profile:       profile,
 				ConsumedCount: consumedCount,
+				PostFatigue:   fatigue,
 			})
 		})
 
 		// 3. GET /api/metrics/global -> Retorna os posts com maior momentum coletivo na rede
 		r.Get("/metrics/global", handleGlobalMetrics)
 
-		// 4. POST /api/interact -> Aplica deltas, registra consumo/telemetria e devolve novo estado
+		// 4. POST /api/interact -> Aplica deltas, registra fadiga/telemetria e devolve novo estado
 		r.Post("/interact", handleInteract)
 
 		// 5. POST /api/telemetry/dwell -> Endpoint dedicado para eventos passivos de telemetria
 		r.Post("/telemetry/dwell", handleInteract)
 
-		// 6. POST /api/reset -> Restaura perfil para 50.0 e limpa consumedIDs da sessão
+		// 6. POST /api/session/sync -> Restaura estado de perfil/fadiga salvo no cliente
+		r.Post("/session/sync", handleSessionSync)
+
+		// 7. POST /api/reset -> Restaura perfil para 50.0 e limpa fadiga da sessão
 		r.Post("/reset", func(w http.ResponseWriter, r *http.Request) {
 			sid := getSessionID(r)
 			profile, consumedCount, feed := appState.Reset(sid)
@@ -189,6 +216,7 @@ func main() {
 	// Fallback sem prefixo /api
 	r.Post("/interact", handleInteract)
 	r.Post("/telemetry/dwell", handleInteract)
+	r.Post("/session/sync", handleSessionSync)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -40,25 +40,36 @@ func TestState_SessionIsolation(t *testing.T) {
 		t.Errorf("esperado 0 posts consumidos para Bob, obteve %d", countB)
 	}
 
-	// O feed de Bob ainda deve conter 'tech-1', enquanto o de Alice não
+	// O feed de Bob deve manter 'tech-1' sem fadiga (1.0), enquanto o de Alice mantém 'tech-1' com fadiga (< 1.0)
 	feedBob := appState.GetFeed(sessB)
 	feedAlice := appState.GetFeed(sessA)
 
-	hasTech1InBob := false
+	foundBob := false
 	for _, p := range feedBob {
 		if p.ID == "tech-1" {
-			hasTech1InBob = true
+			foundBob = true
+			if p.Metadata.FatigueMultiplier != 1.0 {
+				t.Errorf("tech-1 no feed de Bob não deveria ter fadiga, obteve %.2f", p.Metadata.FatigueMultiplier)
+			}
 			break
 		}
 	}
-	if !hasTech1InBob {
+	if !foundBob {
 		t.Errorf("tech-1 deveria estar disponível no feed de Bob")
 	}
 
+	foundAlice := false
 	for _, p := range feedAlice {
 		if p.ID == "tech-1" {
-			t.Errorf("tech-1 não deveria estar no feed de Alice após consumo")
+			foundAlice = true
+			if p.Metadata.FatigueMultiplier >= 1.0 {
+				t.Errorf("tech-1 no feed de Alice deveria ter fadiga aplicada (< 1.0), obteve %.2f", p.Metadata.FatigueMultiplier)
+			}
+			break
 		}
+	}
+	if !foundAlice {
+		t.Errorf("tech-1 deveria continuar no pool do feed de Alice (fadiga sem exclusão rígida)")
 	}
 }
 
@@ -395,5 +406,53 @@ func TestGlobalMetrics_Concurrency(t *testing.T) {
 	snapshot := appState.GetGlobalMetricsSnapshot()
 	if snapshot.TotalSystemInteractions == 0 {
 		t.Errorf("esperava interações contabilizadas após execução concorrente")
+	}
+}
+
+func TestState_SyncSessionPersistence(t *testing.T) {
+	catalog := sampleTestCatalog()
+	appState := NewAppState(catalog)
+
+	sessID := "persisted-browser-session"
+	customProfile := UserProfile{
+		CatTecnologia: 88.0,
+		CatCinema:     35.0,
+		CatCulinaria:  50.0,
+		CatFotografia: 50.0,
+		CatAnimais:    50.0,
+		CatEsportes:   50.0,
+		CatCarros:     50.0,
+		CatGames:      42.0,
+	}
+
+	prof, count, feed := appState.SyncSession(SessionSyncRequest{
+		Profile:       customProfile,
+		ConsumedCount: 4,
+		PostFatigue: map[string]PostFatigueRecord{
+			"tech-1": {Interactions: 1, WasSkipped: false},
+		},
+	}, sessID)
+
+	if count != 4 {
+		t.Errorf("esperava consumedCount=4 após sync, obteve %d", count)
+	}
+	if prof[CatTecnologia] != 88.0 {
+		t.Errorf("esperava afinidade Tecnologia=88.0 após sync, obteve %.2f", prof[CatTecnologia])
+	}
+	_, _, restoredFatigue := appState.GetProfileWithFatigue(sessID)
+	if restoredFatigue["tech-1"].Interactions != 1 {
+		t.Errorf("esperava fadiga restaurada para tech-1, obteve %+v", restoredFatigue["tech-1"])
+	}
+	if len(feed) != len(catalog) {
+		t.Errorf("esperava catálogo completo após sync, obteve %d", len(feed))
+	}
+
+	// Nova tentativa de sync com perfil diferente NÃO deve sobrescrever uma sessão já ativa com interações
+	profAfter, _, _ := appState.SyncSession(SessionSyncRequest{
+		Profile:       defaultTestProfile(),
+		ConsumedCount: 1,
+	}, sessID)
+	if profAfter[CatTecnologia] != 88.0 {
+		t.Errorf("sync não deveria sobrescrever sessão ativa no servidor (tech=%.2f)", profAfter[CatTecnologia])
 	}
 }

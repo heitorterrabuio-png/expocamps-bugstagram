@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 type Category string
 
 const (
@@ -83,11 +85,21 @@ type ExplanationMetadata struct {
 	IsTrending        bool           `json:"is_trending"`
 	ColdStartFactor   float64        `json:"cold_start_factor"`
 	PersonalWeight    float64        `json:"personal_weight"`
+	FatigueMultiplier float64        `json:"fatigue_multiplier"`
+	JitterApplied     float64        `json:"jitter_applied"`
 }
 
 type ScoredPost struct {
 	Post
 	Metadata ExplanationMetadata `json:"metadata"`
+}
+
+// PostFatigueRecord rastreia o histórico de interações/visualizações de um post
+// para aplicar decaimento temporário de fadiga em vez de remoção definitiva.
+type PostFatigueRecord struct {
+	Interactions int       `json:"interactions"`
+	LastSeenAt   time.Time `json:"last_seen_at"`
+	WasSkipped   bool      `json:"was_skipped,omitempty"`
 }
 
 type UserProfile map[Category]float64
@@ -98,15 +110,23 @@ type InteractRequest struct {
 	Action   ActionType `json:"action"`
 }
 
+type SessionSyncRequest struct {
+	Profile       UserProfile                  `json:"profile"`
+	ConsumedCount int                          `json:"consumed_count"`
+	PostFatigue   map[string]PostFatigueRecord `json:"post_fatigue,omitempty"`
+}
+
 type ProfileResponse struct {
-	Profile       UserProfile `json:"profile"`
-	ConsumedCount int         `json:"consumed_count"`
+	Profile       UserProfile                  `json:"profile"`
+	ConsumedCount int                          `json:"consumed_count"`
+	PostFatigue   map[string]PostFatigueRecord `json:"post_fatigue,omitempty"`
 }
 
 type StateSyncResponse struct {
-	Profile       UserProfile  `json:"profile"`
-	ConsumedCount int          `json:"consumed_count"`
-	Feed          []ScoredPost `json:"feed"`
+	Profile       UserProfile                  `json:"profile"`
+	ConsumedCount int                          `json:"consumed_count"`
+	PostFatigue   map[string]PostFatigueRecord `json:"post_fatigue,omitempty"`
+	Feed          []ScoredPost                 `json:"feed"`
 }
 
 type GlobalMetricsResponse struct {

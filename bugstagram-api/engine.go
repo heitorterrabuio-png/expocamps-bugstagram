@@ -3,17 +3,39 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Meia-vida configurada para 12 horas: a cada 12h, a relevância temporal decai pela metade.
 const HalfLifeHours = 12.0
 
+// DefaultJitterWeight define a amplitude máxima (em pontos) do ruído estocástico no score.
+// Variar entre [0, 3.5] renova a ordenação entre posts semelhantes no F5 sem quebrar a bolha dominante.
+const DefaultJitterWeight = 3.5
+
 var LambdaDecay = math.Ln2 / HalfLifeHours
 
 func round2(val float64) float64 {
 	return math.Round(val*100.0) / 100.0
+}
+
+// CalculateFatigueMultiplier aplica penalidade temporária (fadiga) a posts já interagidos.
+// Em vez de deletar o post para sempre, seu score sofre decaimento multiplicativo (~0.30x na 1ª interação)
+// caindo para o fim da fila, com recuperação gradual em meia-vida de 30 minutos.
+func CalculateFatigueMultiplier(rec PostFatigueRecord, now time.Time) float64 {
+	if rec.Interactions <= 0 {
+		return 1.0
+	}
+	elapsedMinutes := math.Max(0.0, now.Sub(rec.LastSeenAt).Minutes())
+	effectiveHits := float64(rec.Interactions) * math.Exp(-elapsedMinutes/30.0)
+	if rec.WasSkipped {
+		effectiveHits *= 1.5
+	}
+	multiplier := math.Pow(0.30, effectiveHits)
+	return math.Max(0.05, math.Min(1.0, multiplier))
 }
 
 // CalculateFreshness calcula a relevância temporal usando decaimento exponencial de meia-vida.
@@ -63,22 +85,38 @@ func CalculateColdStartWeights(engagementCount int) (coldStartFactor float64, pe
 }
 
 type candidatePost struct {
-	post             Post
-	categoryAffinity float64
-	creatorAffinity  float64
-	freshness        float64
-	popularity       float64
-	ageHours         float64
-	affinityPoints   float64
-	creatorPoints    float64
-	freshnessPoints  float64
-	popularityPoints float64
-	personalScore    float64
-	trendingScore    float64
-	isTrending       bool
-	coldStartFactor  float64
-	personalWeight   float64
-	rawScore         float64
+	post              Post
+	categoryAffinity  float64
+	creatorAffinity   float64
+	freshness         float64
+	popularity        float64
+	ageHours          float64
+	affinityPoints    float64
+	creatorPoints     float64
+	freshnessPoints   float64
+	popularityPoints  float64
+	personalScore     float64
+	trendingScore     float64
+	isTrending        bool
+	coldStartFactor   float64
+	personalWeight    float64
+	fatigueMultiplier float64
+	jitterApplied     float64
+	rawScore          float64
+}
+
+// FeedOptions configura sinais comportamentais, fadiga temporal e amplitude de ruído estocástico (Jitter).
+type FeedOptions struct {
+	AuthorAffinity  map[string]float64
+	DwellPosts      map[string]bool
+	SharedPosts     map[string]bool
+	ConsumedIDs     map[string]bool
+	PostFatigue     map[string]PostFatigueRecord
+	TrendingScores  map[string]float64
+	IsTrendingMap   map[string]bool
+	EngagementCount int
+	JitterWeight    float64
+	Now             time.Time
 }
 
 // compareTieBreaker resolve empates por ordem hierárquica estrita:
@@ -99,9 +137,13 @@ func compareTieBreaker(a, b candidatePost) bool {
 	return a.post.ID < b.post.ID
 }
 
-// GenerateFeed é a interface de compatibilidade clássica.
+// GenerateFeed é a interface de compatibilidade clássica (sem ruído estocástico para testes determinísticos de fórmula).
 func GenerateFeed(posts []Post, profile UserProfile, consumedIDs map[string]bool) []ScoredPost {
-	return GenerateFeedWithContext(posts, profile, nil, nil, nil, consumedIDs, nil, nil, len(consumedIDs))
+	return GenerateFeedWithOptions(posts, profile, FeedOptions{
+		ConsumedIDs:     consumedIDs,
+		EngagementCount: len(consumedIDs),
+		JitterWeight:    0.0,
+	})
 }
 
 // GenerateFeedWithSignals constrói o feed ordenado utilizando o Value Model comportamental do Instagram:
@@ -114,11 +156,18 @@ func GenerateFeedWithSignals(
 	sharedPosts map[string]bool,
 	consumedIDs map[string]bool,
 ) []ScoredPost {
-	return GenerateFeedWithContext(posts, profile, authorAffinity, dwellPosts, sharedPosts, consumedIDs, nil, nil, len(consumedIDs))
+	return GenerateFeedWithOptions(posts, profile, FeedOptions{
+		AuthorAffinity:  authorAffinity,
+		DwellPosts:      dwellPosts,
+		SharedPosts:     sharedPosts,
+		ConsumedIDs:     consumedIDs,
+		EngagementCount: len(consumedIDs),
+		JitterWeight:    0.0,
+	})
 }
 
-// GenerateFeedWithContext calcula o ranking unindo o Value Model individual ao Momentum Coletivo Global
-// através de interpolação linear (LERP) de Cold Start vs. Bolha Personalizada.
+// GenerateFeedWithContext calcula o ranking unindo o Value Model individual, Momentum Coletivo Global (LERP)
+// e ruído estocástico controlado (DefaultJitterWeight) para renovação dinâmica do feed a cada requisição/F5.
 func GenerateFeedWithContext(
 	posts []Post,
 	profile UserProfile,
@@ -130,25 +179,42 @@ func GenerateFeedWithContext(
 	isTrendingMap map[string]bool,
 	engagementCount int,
 ) []ScoredPost {
+	return GenerateFeedWithOptions(posts, profile, FeedOptions{
+		AuthorAffinity:  authorAffinity,
+		DwellPosts:      dwellPosts,
+		SharedPosts:     sharedPosts,
+		ConsumedIDs:     consumedIDs,
+		TrendingScores:  trendingScores,
+		IsTrendingMap:   isTrendingMap,
+		EngagementCount: engagementCount,
+		JitterWeight:    DefaultJitterWeight,
+	})
+}
+
+// GenerateFeedWithOptions executa o pipeline completo de ranqueamento com Fadiga (Decay),
+// LERP de Cold Start, Jitter Estocástico via sort.Slice e Slots de Furo de Bolha.
+func GenerateFeedWithOptions(posts []Post, profile UserProfile, opts FeedOptions) []ScoredPost {
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+
 	var coldStartFactor, personalWeight float64
-	if trendingScores != nil {
-		coldStartFactor, personalWeight = CalculateColdStartWeights(engagementCount)
+	if opts.TrendingScores != nil {
+		coldStartFactor, personalWeight = CalculateColdStartWeights(opts.EngagementCount)
 	} else {
 		coldStartFactor = 0.0
 		personalWeight = 1.0
 	}
 
-	// 1. Filtro e Cálculo do Value Model Multi-Sinal integrado ao Trending Global
+	// 1. Scoring Multi-Sinal + Fadiga Temporária (Decay) + Jitter Estocástico
+	// Nenhum post é excluído sumariamente: posts já vistos sofrem fadiga e caem para o fim da fila.
 	remaining := make([]candidatePost, 0, len(posts))
 	for _, p := range posts {
-		if consumedIDs != nil && consumedIDs[p.ID] {
-			continue
-		}
-
 		catAff := profile[p.Category]
 		authAff := 50.0
-		if authorAffinity != nil {
-			if v, ok := authorAffinity[p.Author.Username]; ok {
+		if opts.AuthorAffinity != nil {
+			if v, ok := opts.AuthorAffinity[p.Author.Username]; ok {
 				authAff = v
 			}
 		}
@@ -167,47 +233,75 @@ func GenerateFeedWithContext(
 
 		// Score Global de Momentum / Trending
 		tScore := 50.0
-		if trendingScores != nil {
-			if v, ok := trendingScores[p.ID]; ok {
+		if opts.TrendingScores != nil {
+			if v, ok := opts.TrendingScores[p.ID]; ok {
 				tScore = v
 			}
 		}
 
 		trendingFlag := false
-		if isTrendingMap != nil {
-			trendingFlag = isTrendingMap[p.ID]
+		if opts.IsTrendingMap != nil {
+			trendingFlag = opts.IsTrendingMap[p.ID]
 		}
 
 		// LERP Cold Start: transição suave entre Consenso Coletivo e Bolha Pessoal
-		rawScore := (personalScore * personalWeight) + (tScore * coldStartFactor)
+		baseScore := (personalScore * personalWeight) + (tScore * coldStartFactor)
+
+		// Fadiga Temporária (Decay): posts já interagidos recebem multiplicador < 1.0
+		var fatigueRec PostFatigueRecord
+		if opts.PostFatigue != nil {
+			if rec, ok := opts.PostFatigue[p.ID]; ok {
+				fatigueRec = rec
+			}
+		} else if opts.ConsumedIDs != nil && opts.ConsumedIDs[p.ID] {
+			fatigueRec = PostFatigueRecord{Interactions: 1, LastSeenAt: now}
+		}
+		fatigueMult := CalculateFatigueMultiplier(fatigueRec, now)
+
+		// Ruído Estocástico Controlado (Jitter) sobre o score fatigado
+		jitter := 0.0
+		if opts.JitterWeight > 0 {
+			jitter = rand.Float64() * opts.JitterWeight
+		}
+		rawScore := (baseScore * fatigueMult) + jitter
 
 		postCopy := p
 		postCopy.RecencyScore = round2(freshness)
 		postCopy.AgeHours = round2(ageHours)
 
 		remaining = append(remaining, candidatePost{
-			post:             postCopy,
-			categoryAffinity: catAff,
-			creatorAffinity:  authAff,
-			freshness:        freshness,
-			popularity:       popularity,
-			ageHours:         ageHours,
-			affinityPoints:   affPts,
-			creatorPoints:    authPts,
-			freshnessPoints:  freshPts,
-			popularityPoints: popPts,
-			personalScore:    personalScore,
-			trendingScore:    tScore,
-			isTrending:       trendingFlag,
-			coldStartFactor:  coldStartFactor,
-			personalWeight:   personalWeight,
-			rawScore:         rawScore,
+			post:              postCopy,
+			categoryAffinity:  catAff,
+			creatorAffinity:   authAff,
+			freshness:         freshness,
+			popularity:        popularity,
+			ageHours:          ageHours,
+			affinityPoints:    affPts,
+			creatorPoints:     authPts,
+			freshnessPoints:   freshPts,
+			popularityPoints:  popPts,
+			personalScore:     personalScore,
+			trendingScore:     tScore,
+			isTrending:        trendingFlag,
+			coldStartFactor:   coldStartFactor,
+			personalWeight:    personalWeight,
+			fatigueMultiplier: fatigueMult,
+			jitterApplied:     jitter,
+			rawScore:          rawScore,
 		})
 	}
 
+	// Ordenação base com ruído estocástico (Score * Fadiga + Jitter) via sort.Slice
+	sort.Slice(remaining, func(i, j int) bool {
+		if math.Abs(remaining[i].rawScore-remaining[j].rawScore) > 1e-9 {
+			return remaining[i].rawScore > remaining[j].rawScore
+		}
+		return compareTieBreaker(remaining[i], remaining[j])
+	})
+
 	result := make([]ScoredPost, 0, len(remaining))
 
-	// 2. Resolução de Slots com Furo de Bolha e Penalidade de Repetição
+	// 2. Resolução de Slots com Furo de Bolha e Penalidade de Repetição Consecutiva
 	for len(remaining) > 0 {
 		slotIndex := len(result)
 		isExplorationSlot := (slotIndex+1)%4 == 0 // Índices 3, 7, 11, 15...
@@ -216,8 +310,12 @@ func GenerateFeedWithContext(
 			chosenIdx, reason := selectExplorationCandidate(remaining)
 			chosen := remaining[chosenIdx]
 
-			hasDwell := dwellPosts != nil && dwellPosts[chosen.post.ID]
-			hasShare := sharedPosts != nil && sharedPosts[chosen.post.ID]
+			hasDwell := opts.DwellPosts != nil && opts.DwellPosts[chosen.post.ID]
+			hasShare := opts.SharedPosts != nil && opts.SharedPosts[chosen.post.ID]
+
+			if chosen.fatigueMultiplier < 0.99 {
+				reason = fmt.Sprintf("%s [Fadiga %.2fx]", reason, chosen.fatigueMultiplier)
+			}
 
 			result = append(result, ScoredPost{
 				Post: chosen.post,
@@ -240,6 +338,8 @@ func GenerateFeedWithContext(
 					IsTrending:        chosen.isTrending,
 					ColdStartFactor:   round2(chosen.coldStartFactor),
 					PersonalWeight:    round2(chosen.personalWeight),
+					FatigueMultiplier: round2(chosen.fatigueMultiplier),
+					JitterApplied:     round2(chosen.jitterApplied),
 				},
 			})
 
@@ -287,8 +387,8 @@ func GenerateFeedWithContext(
 
 		chosen := remaining[bestIdx]
 
-		hasDwell := dwellPosts != nil && dwellPosts[chosen.post.ID]
-		hasShare := sharedPosts != nil && sharedPosts[chosen.post.ID]
+		hasDwell := opts.DwellPosts != nil && opts.DwellPosts[chosen.post.ID]
+		hasShare := opts.SharedPosts != nil && opts.SharedPosts[chosen.post.ID]
 
 		var signals []string
 		if hasShare {
@@ -335,6 +435,10 @@ func GenerateFeedWithContext(
 			}
 		}
 
+		if chosen.fatigueMultiplier < 0.99 {
+			reason = fmt.Sprintf("%s [Fadiga %.2fx por visualização recente]", reason, chosen.fatigueMultiplier)
+		}
+
 		result = append(result, ScoredPost{
 			Post: chosen.post,
 			Metadata: ExplanationMetadata{
@@ -356,6 +460,8 @@ func GenerateFeedWithContext(
 				IsTrending:        chosen.isTrending,
 				ColdStartFactor:   round2(chosen.coldStartFactor),
 				PersonalWeight:    round2(chosen.personalWeight),
+				FatigueMultiplier: round2(chosen.fatigueMultiplier),
+				JitterApplied:     round2(chosen.jitterApplied),
 			},
 		})
 
@@ -365,7 +471,8 @@ func GenerateFeedWithContext(
 	return result
 }
 
-// selectExplorationCandidate aplica a regra de Furo de Bolha para os slots de descoberta.
+// selectExplorationCandidate aplica a regra de Furo de Bolha para os slots de descoberta,
+// priorizando candidatos sem fadiga e incorporando o ruído estocástico controlado.
 func selectExplorationCandidate(remaining []candidatePost) (int, string) {
 	if len(remaining) == 0 {
 		return 0, ""
@@ -379,13 +486,13 @@ func selectExplorationCandidate(remaining []candidatePost) (int, string) {
 		}
 	}
 
-	// Caso 1: Existem categorias neutras elegíveis -> Maior soma (Popularidade + Freshness)
+	// Caso 1: Existem categorias neutras elegíveis -> Maior soma (Popularidade + Freshness) * Fadiga + Jitter
 	if len(neutralIndices) > 0 {
 		sort.Slice(neutralIndices, func(i, j int) bool {
 			candA := remaining[neutralIndices[i]]
 			candB := remaining[neutralIndices[j]]
-			sumA := candA.popularity + candA.freshness
-			sumB := candB.popularity + candB.freshness
+			sumA := (candA.popularity+candA.freshness)*candA.fatigueMultiplier + candA.jitterApplied
+			sumB := (candB.popularity+candB.freshness)*candB.fatigueMultiplier + candB.jitterApplied
 
 			if math.Abs(sumA-sumB) > 1e-9 {
 				return sumA > sumB
@@ -423,8 +530,10 @@ func selectExplorationCandidate(remaining []candidatePost) (int, string) {
 		candA := remaining[lowestAffinityIndices[i]]
 		candB := remaining[lowestAffinityIndices[j]]
 
-		if math.Abs(candA.popularity-candB.popularity) > 1e-9 {
-			return candA.popularity > candB.popularity
+		scoreA := candA.popularity*candA.fatigueMultiplier + candA.jitterApplied
+		scoreB := candB.popularity*candB.fatigueMultiplier + candB.jitterApplied
+		if math.Abs(scoreA-scoreB) > 1e-9 {
+			return scoreA > scoreB
 		}
 		return compareTieBreaker(candA, candB)
 	})

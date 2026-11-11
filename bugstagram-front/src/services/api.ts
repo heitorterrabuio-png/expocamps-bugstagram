@@ -4,7 +4,10 @@ import {
   ActionType,
   Category,
   GlobalMetricsResponse,
+  PostFatigueRecord,
+  ProfileResponse,
   ScoredPost,
+  SessionSyncPayload,
   SimulationStateResponse,
   UserProfile,
 } from "@/types";
@@ -24,7 +27,7 @@ export class ApiOfflineError extends Error {
  * Garante que múltiplos usuários (ou abas) tenham simulações isoladas
  * no backend Go sem conflitos concorrentes.
  */
-function getSessionId(): string {
+export function getSessionId(): string {
   if (typeof window === "undefined") return "ssr-session";
   const KEY = "bugstagram_session_id";
   try {
@@ -40,6 +43,54 @@ function getSessionId(): string {
     return sid;
   } catch {
     return "default";
+  }
+}
+
+const SESSION_STATE_KEY = "bugstagram_session_state_v1";
+
+export interface PersistedSessionSnapshot {
+  sessionId: string;
+  profile: UserProfile;
+  consumed_count: number;
+  post_fatigue?: Record<string, PostFatigueRecord>;
+}
+
+export function saveSessionSnapshot(
+  snapshot: Omit<PersistedSessionSnapshot, "sessionId">
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: PersistedSessionSnapshot = {
+      sessionId: getSessionId(),
+      ...snapshot,
+    };
+    localStorage.setItem(SESSION_STATE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignora falha de cota do localStorage
+  }
+}
+
+export function loadSessionSnapshot(): PersistedSessionSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SESSION_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedSessionSnapshot;
+    if (!parsed || parsed.sessionId !== getSessionId() || !parsed.profile) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSessionSnapshot(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(SESSION_STATE_KEY);
+  } catch {
+    // noop
   }
 }
 
@@ -108,15 +159,36 @@ export async function getFeed(): Promise<ScoredPost[]> {
   return Array.isArray(data) ? data : data.feed;
 }
 
-export async function getProfile(): Promise<UserProfile> {
+export async function getProfileState(): Promise<ProfileResponse> {
   const data = await requestWithFallback<
-    UserProfile | { profile: UserProfile }
+    ProfileResponse | { profile: UserProfile; consumed_count?: number; post_fatigue?: Record<string, PostFatigueRecord> }
   >("/profile", { method: "GET" });
 
-  if ("profile" in data && typeof data.profile === "object") {
-    return data.profile as UserProfile;
+  if ("consumed_count" in data && typeof data.consumed_count === "number") {
+    return {
+      profile: data.profile,
+      consumed_count: data.consumed_count,
+      post_fatigue: data.post_fatigue,
+    };
   }
-  return data as UserProfile;
+  return {
+    profile: ("profile" in data ? data.profile : data) as UserProfile,
+    consumed_count: 0,
+  };
+}
+
+export async function getProfile(): Promise<UserProfile> {
+  const state = await getProfileState();
+  return state.profile;
+}
+
+export async function syncSessionState(
+  payload: SessionSyncPayload
+): Promise<SimulationStateResponse> {
+  return requestWithFallback<SimulationStateResponse>("/session/sync", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function interact(
@@ -150,9 +222,11 @@ export async function sendTelemetryDwell(
 }
 
 export async function resetSimulation(): Promise<SimulationStateResponse> {
-  return requestWithFallback<SimulationStateResponse>("/reset", {
+  const res = await requestWithFallback<SimulationStateResponse>("/reset", {
     method: "POST",
   });
+  clearSessionSnapshot();
+  return res;
 }
 
 export async function getGlobalMetrics(): Promise<GlobalMetricsResponse> {

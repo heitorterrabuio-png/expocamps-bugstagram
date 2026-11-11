@@ -188,10 +188,30 @@ func TestGenerateFeed_ConsumedFilter(t *testing.T) {
 
 	feed := GenerateFeed(catalog, profile, consumed)
 
-	for _, post := range feed {
-		if consumed[post.ID] {
-			t.Errorf("post consumido '%s' foi retornado no feed", post.ID)
+	if len(feed) != len(catalog) {
+		t.Fatalf("fadiga não deveria excluir posts: esperado %d posts, obteve %d", len(catalog), len(feed))
+	}
+
+	seenIndex := map[string]int{}
+	for idx, post := range feed {
+		seenIndex[post.ID] = idx
+		if consumed[post.ID] && post.Metadata.FatigueMultiplier >= 1.0 {
+			t.Errorf("post consumido '%s' deveria ter FatigueMultiplier < 1.0, obteve %f", post.ID, post.Metadata.FatigueMultiplier)
 		}
+		if !consumed[post.ID] && post.Metadata.FatigueMultiplier != 1.0 {
+			t.Errorf("post não consumido '%s' deveria ter FatigueMultiplier == 1.0, obteve %f", post.ID, post.Metadata.FatigueMultiplier)
+		}
+	}
+
+	// Em bolha neutra, posts fatigados devem cair para o fim da fila abaixo de posts não vistos (exceto possíveis slots de exploração)
+	var maxUnseenNonExploitIdx int = -1
+	for idx, post := range feed {
+		if !consumed[post.ID] && !post.Metadata.IsExplorationSlot && idx > maxUnseenNonExploitIdx {
+			maxUnseenNonExploitIdx = idx
+		}
+	}
+	if seenIndex["tech-1"] < maxUnseenNonExploitIdx && !feed[seenIndex["tech-1"]].Metadata.IsExplorationSlot {
+		t.Errorf("post fatigado tech-1 (pos %d) deveria ficar após posts não vistos (max pos %d)", seenIndex["tech-1"], maxUnseenNonExploitIdx)
 	}
 }
 
@@ -331,5 +351,120 @@ func TestColdStart_FeedRecommendationDiagnostic(t *testing.T) {
 	}
 	if strings.Contains(firstMature.Metadata.MatchReason, "[Cold Start]") {
 		t.Errorf("com bolha madura, MatchReason NÃO deve conter '[Cold Start]', obteve '%s'", firstMature.Metadata.MatchReason)
+	}
+}
+
+func TestGenerateFeed_StochasticJitterPreservesBubble(t *testing.T) {
+	catalog := []Post{
+		{
+			ID:           "tech-a",
+			Category:     CatTecnologia,
+			Title:        "Go Concurrency",
+			Content:      "Goroutines",
+			Author:       Author{Username: "dev1", DisplayName: "Dev 1"},
+			Likes:        300,
+			AgeHours:     4.0,
+			RecencyScore: 80,
+		},
+		{
+			ID:           "tech-b",
+			Category:     CatTecnologia,
+			Title:        "Distributed Systems",
+			Content:      "Consensus",
+			Author:       Author{Username: "dev2", DisplayName: "Dev 2"},
+			Likes:        298,
+			AgeHours:     4.0,
+			RecencyScore: 80,
+		},
+		{
+			ID:           "tech-c",
+			Category:     CatTecnologia,
+			Title:        "Memory Profiling",
+			Content:      "pprof",
+			Author:       Author{Username: "dev3", DisplayName: "Dev 3"},
+			Likes:        296,
+			AgeHours:     4.0,
+			RecencyScore: 80,
+		},
+		{
+			ID:           "cine-top",
+			Category:     CatCinema,
+			Title:        "Oscar Review",
+			Content:      "Cinema",
+			Author:       Author{Username: "cine1", DisplayName: "Cine 1"},
+			Likes:        600,
+			AgeHours:     1.0,
+			RecencyScore: 95,
+		},
+	}
+
+	profile := defaultTestProfile()
+	for _, c := range AllCategories {
+		profile[c] = 15.0
+	}
+	profile[CatTecnologia] = 95.0
+
+	seenFirst := make(map[string]bool)
+	for run := 0; run < 25; run++ {
+		feed := GenerateFeedWithOptions(catalog, profile, FeedOptions{
+			JitterWeight:    DefaultJitterWeight,
+			EngagementCount: 6,
+		})
+		if len(feed) < 2 {
+			t.Fatalf("feed muito curto: %d", len(feed))
+		}
+		if feed[0].Category != CatTecnologia {
+			t.Fatalf("run %d: jitter quebrou a bolha dominante! topo foi %s (%s)", run, feed[0].Category, feed[0].ID)
+		}
+		if feed[0].Metadata.JitterApplied < 0 || feed[0].Metadata.JitterApplied > DefaultJitterWeight+1e-9 {
+			t.Errorf("JitterApplied fora do intervalo esperado [0, %.2f]: %f", DefaultJitterWeight, feed[0].Metadata.JitterApplied)
+		}
+		seenFirst[feed[0].ID] = true
+	}
+
+	if len(seenFirst) < 2 {
+		t.Errorf("esperava variação estocástica no topo entre posts competitivos de Tecnologia em 25 runs, obteve apenas: %v", seenFirst)
+	}
+}
+
+func TestGenerateFeed_FatigueDropsSeenBelowUnseenSameCategory(t *testing.T) {
+	catalog := []Post{
+		{
+			ID:           "tech-seen",
+			Category:     CatTecnologia,
+			Title:        "Post Já Visto",
+			Content:      "A",
+			Author:       Author{Username: "a1", DisplayName: "A1"},
+			Likes:        120,
+			RecencyScore: 95,
+		},
+		{
+			ID:           "tech-unseen",
+			Category:     CatTecnologia,
+			Title:        "Post Novo",
+			Content:      "B",
+			Author:       Author{Username: "a2", DisplayName: "A2"},
+			Likes:        110,
+			RecencyScore: 90,
+		},
+	}
+
+	profile := defaultTestProfile()
+	profile[CatTecnologia] = 90.0
+
+	feed := GenerateFeedWithOptions(catalog, profile, FeedOptions{
+		ConsumedIDs:     map[string]bool{"tech-seen": true},
+		JitterWeight:    0.0,
+		EngagementCount: 5,
+	})
+
+	if len(feed) != 2 {
+		t.Fatalf("esperava os 2 posts presentes (sem exclusão rígida), obteve %d", len(feed))
+	}
+	if feed[0].ID != "tech-unseen" {
+		t.Errorf("esperava tech-unseen em primeiro, obteve %s", feed[0].ID)
+	}
+	if feed[1].ID != "tech-seen" || feed[1].Metadata.FatigueMultiplier >= 1.0 {
+		t.Errorf("esperava tech-seen em segundo com fadiga < 1.0, obteve %s (mult=%.2f)", feed[1].ID, feed[1].Metadata.FatigueMultiplier)
 	}
 }
