@@ -59,6 +59,30 @@ func parseAllowedOrigins() []string {
 	return origins
 }
 
+func isOriginAllowed(origin string) bool {
+	originsEnv := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if originsEnv != "" {
+		for _, allowed := range parseAllowedOrigins() {
+			if strings.EqualFold(origin, allowed) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if origin == "https://expocamps-bugstagram.vercel.app" {
+		return true
+	}
+	if strings.HasPrefix(origin, "https://expocamps-bugstagram-") && strings.HasSuffix(origin, ".vercel.app") {
+		return true
+	}
+	if strings.HasPrefix(origin, "http://localhost:") || origin == "http://localhost" ||
+		strings.HasPrefix(origin, "http://127.0.0.1:") || origin == "http://127.0.0.1" {
+		return true
+	}
+	return false
+}
+
 func main() {
 	catalog := GetInitialCatalog()
 	appState := NewAppState(catalog)
@@ -91,7 +115,7 @@ func main() {
 
 	// Configuração do CORS (inclui suporte explícito para X-Session-ID)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   parseAllowedOrigins(),
+		AllowOriginFunc:  func(_ *http.Request, origin string) bool { return isOriginAllowed(origin) },
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Session-ID"},
 		ExposedHeaders:   []string{"Link", "X-Session-ID"},
@@ -169,25 +193,40 @@ func main() {
 	r.Get("/metrics/global", handleGlobalMetrics)
 	r.Get("/api/metrics/global", handleGlobalMetrics)
 
+	// Handlers compartilhados entre /api/* e rotas de fallback na raiz
+	handleFeed := func(w http.ResponseWriter, r *http.Request) {
+		sid := getSessionID(r)
+		feed := appState.GetFeed(sid)
+		writeJSON(w, http.StatusOK, feed)
+	}
+
+	handleProfile := func(w http.ResponseWriter, r *http.Request) {
+		sid := getSessionID(r)
+		profile, consumedCount, fatigue := appState.GetProfileWithFatigue(sid)
+		writeJSON(w, http.StatusOK, ProfileResponse{
+			Profile:       profile,
+			ConsumedCount: consumedCount,
+			PostFatigue:   fatigue,
+		})
+	}
+
+	handleReset := func(w http.ResponseWriter, r *http.Request) {
+		sid := getSessionID(r)
+		profile, consumedCount, feed := appState.Reset(sid)
+		writeJSON(w, http.StatusOK, StateSyncResponse{
+			Profile:       profile,
+			ConsumedCount: consumedCount,
+			Feed:          feed,
+		})
+	}
+
 	// Rotas da API Bugstagram
 	r.Route("/api", func(r chi.Router) {
 		// 1. GET /api/feed -> Retorna []ScoredPost ordenado pelo motor
-		r.Get("/feed", func(w http.ResponseWriter, r *http.Request) {
-			sid := getSessionID(r)
-			feed := appState.GetFeed(sid)
-			writeJSON(w, http.StatusOK, feed)
-		})
+		r.Get("/feed", handleFeed)
 
 		// 2. GET /api/profile -> Retorna o UserProfile atual, contagem de engajamentos e mapa de fadiga
-		r.Get("/profile", func(w http.ResponseWriter, r *http.Request) {
-			sid := getSessionID(r)
-			profile, consumedCount, fatigue := appState.GetProfileWithFatigue(sid)
-			writeJSON(w, http.StatusOK, ProfileResponse{
-				Profile:       profile,
-				ConsumedCount: consumedCount,
-				PostFatigue:   fatigue,
-			})
-		})
+		r.Get("/profile", handleProfile)
 
 		// 3. GET /api/metrics/global -> Retorna os posts com maior momentum coletivo na rede
 		r.Get("/metrics/global", handleGlobalMetrics)
@@ -202,21 +241,16 @@ func main() {
 		r.Post("/session/sync", handleSessionSync)
 
 		// 7. POST /api/reset -> Restaura perfil para 50.0 e limpa fadiga da sessão
-		r.Post("/reset", func(w http.ResponseWriter, r *http.Request) {
-			sid := getSessionID(r)
-			profile, consumedCount, feed := appState.Reset(sid)
-			writeJSON(w, http.StatusOK, StateSyncResponse{
-				Profile:       profile,
-				ConsumedCount: consumedCount,
-				Feed:          feed,
-			})
-		})
+		r.Post("/reset", handleReset)
 	})
 
 	// Fallback sem prefixo /api
+	r.Get("/feed", handleFeed)
+	r.Get("/profile", handleProfile)
 	r.Post("/interact", handleInteract)
 	r.Post("/telemetry/dwell", handleInteract)
 	r.Post("/session/sync", handleSessionSync)
+	r.Post("/reset", handleReset)
 
 	port := os.Getenv("PORT")
 	if port == "" {

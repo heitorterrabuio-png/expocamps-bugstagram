@@ -41,6 +41,7 @@ import {
   UserProfile,
 } from "@/types";
 import {
+  API_BASE_URL,
   getFeed,
   getGlobalMetrics,
   getProfileState,
@@ -48,6 +49,7 @@ import {
   loadSessionSnapshot,
   resetSimulation,
   saveSessionSnapshot,
+  sendTelemetryDwell,
   syncSessionState,
 } from "@/services/api";
 
@@ -489,7 +491,7 @@ function StoryViewerModal({
 }) {
   const style = CATEGORY_STYLES[category];
   const isBubble = score >= 70;
-  const isBlind = score <= 29;
+  const isBlind = score < 30;
 
   return (
     <div
@@ -603,8 +605,17 @@ function PostCard({
   const cardRef = useRef<HTMLElement | null>(null);
   const visibleStartRef = useRef<number | null>(null);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSentDwellRef = useRef<boolean>(false);
   const hasSentFastSkipRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      if (heartTimerRef.current) {
+        clearTimeout(heartTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const element = cardRef.current;
@@ -670,7 +681,13 @@ function PostCard({
 
   const handleDoubleTapLike = () => {
     setShowHeartBurst(true);
-    setTimeout(() => setShowHeartBurst(false), 800);
+    if (heartTimerRef.current) {
+      clearTimeout(heartTimerRef.current);
+    }
+    heartTimerRef.current = setTimeout(() => {
+      setShowHeartBurst(false);
+      heartTimerRef.current = null;
+    }, 800);
     if (!isBusy) {
       onInteract(post.id, post.category, "LIKE");
     }
@@ -683,7 +700,14 @@ function PostCard({
     setCommentText("");
     setShowCommentBox(false);
     // Comentário engaja atenção equivalente a dwell
-    onPassiveInteract(post.id, post.category, "dwell");
+    if (!hasSentDwellRef.current) {
+      hasSentDwellRef.current = true;
+      if (dwellTimerRef.current) {
+        clearTimeout(dwellTimerRef.current);
+        dwellTimerRef.current = null;
+      }
+      onPassiveInteract(post.id, post.category, "dwell");
+    }
   };
 
   return (
@@ -1039,6 +1063,7 @@ export default function BugstagramPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [processingPostId, setProcessingPostId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetKey, setResetKey] = useState<number>(0);
   const [apiError, setApiError] = useState<string | null>(null);
 
   // Estados de reação otimista por post_id
@@ -1097,10 +1122,14 @@ export default function BugstagramPage() {
     ]);
 
     const snapshot = loadSessionSnapshot();
+    const hasModifiedProfile =
+      snapshot &&
+      ALL_CATEGORIES.some((cat) => Math.abs((snapshot.profile[cat] ?? 50) - 50) > 1e-6);
     const hasLocalBubble =
       snapshot &&
       (snapshot.consumed_count > 0 ||
-        Object.keys(snapshot.post_fatigue ?? {}).length > 0);
+        Object.keys(snapshot.post_fatigue ?? {}).length > 0 ||
+        Boolean(hasModifiedProfile));
 
     // Se o backend em memória reiniciou (consumed_count === 0) mas o navegador tem sessão salva,
     // reidrata automaticamente o vetor de afinidade e a fadiga no Go sem perder a bolha no F5.
@@ -1159,9 +1188,9 @@ export default function BugstagramPage() {
       const message =
         err instanceof Error
           ? err.message
-          : "Falha ao conectar à API Go em http://localhost:8080";
+          : `Falha ao conectar à API em ${API_BASE_URL}`;
       setApiError(message);
-      showToast("API Go Offline", message, "error");
+      showToast("API Offline", message, "error");
     } finally {
       setIsLoading(false);
     }
@@ -1188,9 +1217,9 @@ export default function BugstagramPage() {
           const message =
             err instanceof Error
               ? err.message
-              : "Falha ao conectar à API Go em http://localhost:8080";
+              : `Falha ao conectar à API em ${API_BASE_URL}`;
           setApiError(message);
-          showToast("API Go Offline", message, "error");
+          showToast("API Offline", message, "error");
         }
       } finally {
         if (!ignore) {
@@ -1297,11 +1326,12 @@ export default function BugstagramPage() {
   const handlePassiveInteraction = useCallback(
     async (postId: string, category: Category, action: "dwell" | "fast_skip") => {
       try {
-        const updated = await interact(postId, category, action);
+        const updated = await sendTelemetryDwell(postId, category, action);
         setProfile(updated.profile);
         saveSessionSnapshot({
           profile: updated.profile,
-          consumed_count: updated.consumed_count ?? 0,
+          consumed_count:
+            updated.consumed_count ?? loadSessionSnapshot()?.consumed_count ?? 0,
           post_fatigue: updated.post_fatigue,
         });
         if (action === "dwell") {
@@ -1327,6 +1357,7 @@ export default function BugstagramPage() {
       setFeed(resetData.feed);
       setOptimisticMap({});
       setInspectedPostId(null);
+      setResetKey((prev) => prev + 1);
       setTelemetry({
         totalInteractions: 0,
         likes: 0,
@@ -1365,12 +1396,12 @@ export default function BugstagramPage() {
   const neutralZone = useMemo(
     () =>
       ALL_CATEGORIES.filter(
-        (cat) => (profile[cat] ?? 0) >= 30 && (profile[cat] ?? 0) <= 69
+        (cat) => (profile[cat] ?? 0) >= 30 && (profile[cat] ?? 0) < 70
       ),
     [profile]
   );
   const blindZone = useMemo(
-    () => ALL_CATEGORIES.filter((cat) => (profile[cat] ?? 0) <= 29),
+    () => ALL_CATEGORIES.filter((cat) => (profile[cat] ?? 0) < 30),
     [profile]
   );
 
@@ -1402,7 +1433,7 @@ export default function BugstagramPage() {
           TOAST FLUTUANTE
       ===================================================================== */}
       {toast && (
-        <div className="fixed bottom-20 right-4 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-4 md:bottom-6 md:right-6">
+        <div className="fixed bottom-20 right-4 z-50 max-w-sm md:bottom-6 md:right-6">
           <div
             className={`flex items-start gap-3 rounded-2xl border p-3.5 shadow-2xl backdrop-blur-md ${
               toast.type === "error"
@@ -1719,7 +1750,7 @@ export default function BugstagramPage() {
                 const score = Math.round(profile[cat] ?? 50);
                 const style = CATEGORY_STYLES[cat];
                 const isHigh = score >= 70;
-                const isBlind = score <= 29;
+                const isBlind = score < 30;
 
                 return (
                   <button
@@ -1798,7 +1829,7 @@ export default function BugstagramPage() {
             <div className="space-y-6">
               {feed.map((post, index) => (
                 <PostCard
-                  key={post.id}
+                  key={`${resetKey}-${post.id}`}
                   post={post}
                   rankIndex={index}
                   isBusy={isBusy}
@@ -1909,7 +1940,7 @@ export default function BugstagramPage() {
                     const clampedWidth = Math.min(100, Math.max(0, rawScore));
                     const style = CATEGORY_STYLES[category];
                     const isBubble = rawScore >= 70;
-                    const isSilenced = rawScore <= 29;
+                    const isSilenced = rawScore < 30;
 
                     return (
                       <div key={category} className="space-y-1">

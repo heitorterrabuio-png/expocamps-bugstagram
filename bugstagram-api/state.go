@@ -11,15 +11,16 @@ import (
 
 // UserSession encapsula o estado isolado de simulação de um usuário ou aba do navegador.
 type UserSession struct {
-	mu             sync.RWMutex
-	ID             string
-	Profile        UserProfile
-	AuthorAffinity map[string]float64
-	DwellPosts     map[string]bool
-	SharedPosts    map[string]bool
-	ConsumedIDs    map[string]bool
-	PostFatigue    map[string]PostFatigueRecord
-	LastActive     time.Time
+	mu                  sync.RWMutex
+	ID                  string
+	Profile             UserProfile
+	AuthorAffinity      map[string]float64
+	DwellPosts          map[string]bool
+	SharedPosts         map[string]bool
+	ConsumedIDs         map[string]bool
+	PostFatigue         map[string]PostFatigueRecord
+	SyncedConsumedCount int
+	LastActive          time.Time
 }
 
 func newUserSession(id string) *UserSession {
@@ -69,6 +70,13 @@ func (s *UserSession) copyFatigueLocked() map[string]PostFatigueRecord {
 		cp[k] = v
 	}
 	return cp
+}
+
+func (s *UserSession) effectiveEngagementCountLocked() int {
+	if s.SyncedConsumedCount > len(s.ConsumedIDs) {
+		return s.SyncedConsumedCount
+	}
+	return len(s.ConsumedIDs)
 }
 
 // AppState gerencia as sessões ativas com isolamento concorrente e o catálogo imutável.
@@ -140,7 +148,7 @@ func (s *AppState) GetFeed(sessionIDs ...string) []ScoredPost {
 	shared := sess.copySetLocked(sess.SharedPosts)
 	consumed := sess.copySetLocked(sess.ConsumedIDs)
 	fatigue := sess.copyFatigueLocked()
-	engagementCount := len(sess.ConsumedIDs)
+	engagementCount := sess.effectiveEngagementCountLocked()
 	sess.mu.RUnlock()
 
 	trendingScores, isTrendingMap := s.globalMetrics.GetAllTrendingScores()
@@ -163,7 +171,7 @@ func (s *AppState) GetProfile(sessionIDs ...string) (UserProfile, int) {
 	sess.mu.RLock()
 	defer sess.mu.RUnlock()
 
-	return sess.copyProfileLocked(), len(sess.ConsumedIDs)
+	return sess.copyProfileLocked(), sess.effectiveEngagementCountLocked()
 }
 
 func (s *AppState) GetProfileWithFatigue(sessionIDs ...string) (UserProfile, int, map[string]PostFatigueRecord) {
@@ -172,7 +180,7 @@ func (s *AppState) GetProfileWithFatigue(sessionIDs ...string) (UserProfile, int
 	sess.mu.RLock()
 	defer sess.mu.RUnlock()
 
-	return sess.copyProfileLocked(), len(sess.ConsumedIDs), sess.copyFatigueLocked()
+	return sess.copyProfileLocked(), sess.effectiveEngagementCountLocked(), sess.copyFatigueLocked()
 }
 
 // SyncSession reidrata uma sessão caso o backend tenha reiniciado e o cliente possua snapshot no localStorage.
@@ -181,7 +189,7 @@ func (s *AppState) SyncSession(req SessionSyncRequest, sessionIDs ...string) (Us
 
 	sess.mu.Lock()
 	// Só aplica snapshot se a sessão do servidor estiver zerada ou com perfil inicial intacto
-	if len(sess.ConsumedIDs) == 0 && len(sess.PostFatigue) == 0 {
+	if len(sess.ConsumedIDs) == 0 && len(sess.PostFatigue) == 0 && sess.SyncedConsumedCount == 0 {
 		for cat, score := range req.Profile {
 			if IsValidCategory(cat) {
 				sess.Profile[cat] = math.Max(0.0, math.Min(100.0, score))
@@ -193,6 +201,9 @@ func (s *AppState) SyncSession(req SessionSyncRequest, sessionIDs ...string) (Us
 				sess.ConsumedIDs[postID] = true
 			}
 		}
+		if req.ConsumedCount > len(sess.ConsumedIDs) {
+			sess.SyncedConsumedCount = req.ConsumedCount
+		}
 	}
 	sess.LastActive = time.Now()
 
@@ -202,10 +213,7 @@ func (s *AppState) SyncSession(req SessionSyncRequest, sessionIDs ...string) (Us
 	sharedCopy := sess.copySetLocked(sess.SharedPosts)
 	consumedCopy := sess.copySetLocked(sess.ConsumedIDs)
 	fatigueCopy := sess.copyFatigueLocked()
-	engagementCount := len(consumedCopy)
-	if req.ConsumedCount > engagementCount {
-		engagementCount = req.ConsumedCount
-	}
+	engagementCount := sess.effectiveEngagementCountLocked()
 	sess.mu.Unlock()
 
 	trendingScores, isTrendingMap := s.globalMetrics.GetAllTrendingScores()
@@ -318,7 +326,11 @@ func (s *AppState) Interact(req InteractRequest, sessionIDs ...string) (UserProf
 
 	// Registra fadiga temporária em vez de exclusão definitiva; eventos passivos não aplicam fadiga
 	if !isPassive {
+		wasAlreadyConsumed := sess.ConsumedIDs[req.PostID]
 		sess.ConsumedIDs[req.PostID] = true
+		if sess.SyncedConsumedCount > 0 && !wasAlreadyConsumed {
+			sess.SyncedConsumedCount++
+		}
 		rec := sess.PostFatigue[req.PostID]
 		rec.Interactions++
 		rec.LastSeenAt = time.Now()
@@ -335,7 +347,7 @@ func (s *AppState) Interact(req InteractRequest, sessionIDs ...string) (UserProf
 	sharedCopy := sess.copySetLocked(sess.SharedPosts)
 	consumedCopy := sess.copySetLocked(sess.ConsumedIDs)
 	fatigueCopy := sess.copyFatigueLocked()
-	engagementCount := len(consumedCopy)
+	engagementCount := sess.effectiveEngagementCountLocked()
 
 	trendingScores, isTrendingMap := s.globalMetrics.GetAllTrendingScores()
 	feed := GenerateFeedWithOptions(s.catalog, profileCopy, FeedOptions{
@@ -367,6 +379,7 @@ func (s *AppState) Reset(sessionIDs ...string) (UserProfile, int, []ScoredPost) 
 	sess.SharedPosts = make(map[string]bool)
 	sess.ConsumedIDs = make(map[string]bool)
 	sess.PostFatigue = make(map[string]PostFatigueRecord)
+	sess.SyncedConsumedCount = 0
 	sess.LastActive = time.Now()
 
 	profileCopy := sess.copyProfileLocked()

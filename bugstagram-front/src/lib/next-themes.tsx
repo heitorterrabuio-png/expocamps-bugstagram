@@ -48,10 +48,13 @@ function subscribeTheme(callback: () => void) {
   };
 }
 
-function getClientSnapshot(): "dark" | "light" {
-  if (typeof window === "undefined") return "dark";
+function getClientSnapshot(
+  storageKey: string,
+  fallback: "dark" | "light"
+): "dark" | "light" {
+  if (typeof window === "undefined") return fallback;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY_DEFAULT);
+    const stored = localStorage.getItem(storageKey);
     if (stored === "light" || stored === "dark") {
       currentThemeState = stored;
       return stored;
@@ -59,11 +62,7 @@ function getClientSnapshot(): "dark" | "light" {
   } catch {
     // fallback silencioso
   }
-  return currentThemeState;
-}
-
-function getServerSnapshot(): "dark" | "light" {
-  return "dark";
+  return fallback;
 }
 
 function applyDomTheme(
@@ -111,10 +110,19 @@ export function ThemeProvider({
   storageKey = STORAGE_KEY_DEFAULT,
   disableTransitionOnChange = false,
 }: ThemeProviderProps) {
+  const fallbackTheme: "dark" | "light" =
+    defaultTheme === "light" ? "light" : "dark";
+
+  const getSnapshot = useCallback(
+    () => getClientSnapshot(storageKey, fallbackTheme),
+    [storageKey, fallbackTheme]
+  );
+  const getServer = useCallback(() => fallbackTheme, [fallbackTheme]);
+
   const resolvedTheme = useSyncExternalStore(
     subscribeTheme,
-    getClientSnapshot,
-    getServerSnapshot
+    getSnapshot,
+    getServer
   );
 
   useEffect(() => {
@@ -147,13 +155,6 @@ export function ThemeProvider({
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   }, [resolvedTheme, setTheme]);
 
-  // Script síncrono anti-FOUC injetado antes da pintura inicial
-  const antiFoucScript = `(function(){try{var k=${JSON.stringify(
-    storageKey
-  )};var d=${JSON.stringify(
-    defaultTheme === "system" ? "dark" : defaultTheme
-  )};var t=localStorage.getItem(k)||d;var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(t==="light"?"light":"dark");r.style.colorScheme=t==="light"?"light":"dark";}catch(e){}})();`;
-
   return (
     <ThemeContext.Provider
       value={{
@@ -164,10 +165,6 @@ export function ThemeProvider({
         themes: ["light", "dark"],
       }}
     >
-      <script
-        dangerouslySetInnerHTML={{ __html: antiFoucScript }}
-        suppressHydrationWarning
-      />
       {children}
     </ThemeContext.Provider>
   );

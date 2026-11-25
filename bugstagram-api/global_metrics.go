@@ -143,7 +143,10 @@ func (g *GlobalMetricsManager) recalculateLocked(catalog []Post) {
 	}
 
 	sort.Slice(ranked, func(i, j int) bool {
-		return ranked[i].momentum > ranked[j].momentum
+		if math.Abs(ranked[i].momentum-ranked[j].momentum) > 1e-9 {
+			return ranked[i].momentum > ranked[j].momentum
+		}
+		return ranked[i].id < ranked[j].id
 	})
 
 	// Top 15% dos posts são marcados como "Em Alta na Rede"
@@ -199,7 +202,10 @@ func (g *GlobalMetricsManager) GetTopTrending(limit int) []PostGlobalMetrics {
 		if math.Abs(list[i].RawMomentum-list[j].RawMomentum) > 1e-9 {
 			return list[i].RawMomentum > list[j].RawMomentum
 		}
-		return list[i].TotalLikes > list[j].TotalLikes
+		if list[i].TotalLikes != list[j].TotalLikes {
+			return list[i].TotalLikes > list[j].TotalLikes
+		}
+		return list[i].PostID < list[j].PostID
 	})
 
 	if limit > len(list) {

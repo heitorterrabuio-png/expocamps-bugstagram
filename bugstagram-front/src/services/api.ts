@@ -12,13 +12,30 @@ import {
   UserProfile,
 } from "@/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const LOCAL_API_URL = "http://localhost:8080";
+const REMOTE_API_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://expocamps-bugstagram-api.vercel.app"
+).replace(/\/+$/, "");
+
+export const API_BASE_URL = REMOTE_API_URL;
+
+const API_CANDIDATES = Array.from(new Set([LOCAL_API_URL, REMOTE_API_URL]));
+let activeBaseUrl: string | null = null;
 
 export class ApiOfflineError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ApiOfflineError";
+  }
+}
+
+export class ApiHttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
   }
 }
 
@@ -94,13 +111,11 @@ export function clearSessionSnapshot(): void {
   }
 }
 
-/**
- * Executa a requisição tentando o prefixo /api (padrão REST) e faz fallback
- * automático para a raiz caso o roteador Go não utilize o prefixo /api.
- */
-async function requestWithFallback<T>(
+async function fetchFromBase<T>(
+  baseUrl: string,
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
+  timeoutMs?: number
 ): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -108,14 +123,21 @@ async function requestWithFallback<T>(
     ...(options?.headers || {}),
   };
 
-  const primaryUrl = `${API_BASE_URL}/api${endpoint}`;
-  const fallbackUrl = `${API_BASE_URL}${endpoint}`;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  const signal = controller ? controller.signal : options?.signal;
+
+  const primaryUrl = `${baseUrl}/api${endpoint}`;
+  const fallbackUrl = `${baseUrl}${endpoint}`;
 
   try {
     let response = await fetch(primaryUrl, {
       ...options,
       headers,
       cache: "no-store",
+      signal,
     });
 
     if (response.status === 404) {
@@ -123,32 +145,74 @@ async function requestWithFallback<T>(
         ...options,
         headers,
         cache: "no-store",
+        signal,
       });
     }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Erro desconhecido");
-      throw new Error(
+      throw new ApiHttpError(
+        response.status,
         `Erro HTTP ${response.status} ao acessar ${endpoint}: ${errorText}`
       );
     }
 
     return (await response.json()) as T;
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new ApiOfflineError(
-        `Não foi possível conectar à API Go em ${API_BASE_URL}. Verifique se o backend está rodando na porta 8080.`
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Executa a requisição tentando primeiro o localhost:8080 e, caso esteja offline,
+ * faz fallback automático para a API remota (Vercel), mantendo também o fallback
+ * de prefixo /api -> raiz em cada servidor.
+ */
+async function requestWithFallback<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
+  const candidates = activeBaseUrl
+    ? [
+        activeBaseUrl,
+        ...API_CANDIDATES.filter((url) => url !== activeBaseUrl),
+      ]
+    : API_CANDIDATES;
+
+  let lastNetworkError: unknown = null;
+
+  for (const baseUrl of candidates) {
+    try {
+      const timeoutMs = baseUrl === LOCAL_API_URL ? 2000 : undefined;
+      const result = await fetchFromBase<T>(
+        baseUrl,
+        endpoint,
+        options,
+        timeoutMs
       );
+      activeBaseUrl = baseUrl;
+      return result;
+    } catch (error) {
+      if (error instanceof ApiHttpError) {
+        throw error;
+      }
+      if (activeBaseUrl === baseUrl) {
+        activeBaseUrl = null;
+      }
+      lastNetworkError = error;
     }
-    if (error instanceof ApiOfflineError) {
-      throw error;
-    }
+  }
+
+  if (lastNetworkError instanceof TypeError) {
     throw new ApiOfflineError(
-      error instanceof Error
-        ? error.message
-        : `Falha de comunicação com o servidor Go em ${API_BASE_URL}.`
+      `Não foi possível conectar à API (${API_CANDIDATES.join(" ou ")}). Verifique sua conexão ou se o servidor está online.`
     );
   }
+  throw new ApiOfflineError(
+    lastNetworkError instanceof Error
+      ? lastNetworkError.message
+      : `Falha de comunicação com a API (${API_CANDIDATES.join(" ou ")}).`
+  );
 }
 
 export async function getFeed(): Promise<ScoredPost[]> {
@@ -156,7 +220,8 @@ export async function getFeed(): Promise<ScoredPost[]> {
     "/feed",
     { method: "GET" }
   );
-  return Array.isArray(data) ? data : data.feed;
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.feed) ? data.feed : [];
 }
 
 export async function getProfileState(): Promise<ProfileResponse> {
